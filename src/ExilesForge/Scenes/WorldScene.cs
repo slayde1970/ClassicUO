@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
+using System;
 using ClassicUO.Renderer;
 using Microsoft.Xna.Framework;
 using TEF.Core;
@@ -20,10 +21,18 @@ namespace TEF.Scenes
         // spawn point. Stand-in until there's real character-select/spawn
         // logic to pick this from.
         private static readonly Vector2 SpawnTile = new(1436f, 1443f);
-        private const int TileViewRange = 15;
+
+        // Iso constants: a tile steps 44px (2 * 22) diagonally per unit change
+        // in the (x - y)/(x + y) axes, so the on-screen coverage of a square
+        // tile region [-R, R] is a screen-space diamond of half-extent 44*R.
+        private const int TileDiagonalPixels = 44;
+        // A couple of extra rings so tall statics near the edge (whose art
+        // extends well above their tile) don't pop in/out at the border.
+        private const int ViewRangeMargin = 3;
 
         private readonly PlayerEntity _player = new();
         private readonly TileRenderer _tiles = new(mapIndex: 0);
+        private bool _drawStatics = true;
 
         public WorldScene(GameController game) : base(game)
         {
@@ -55,6 +64,11 @@ namespace TEF.Scenes
                 Game.Audio.PlayMusic(8); // "stones2" - the classic-era login theme, ships with every client
             }
 
+            if (input.IsActionPressed(GameAction.ToggleStatics))
+            {
+                _drawStatics = !_drawStatics;
+            }
+
             Camera.Update(true, Time.Delta, input.MousePosition);
         }
 
@@ -74,10 +88,31 @@ namespace TEF.Scenes
             // centered on the player.
             var screenCenter = new Vector2(Camera.Bounds.Width / 2f, Camera.Bounds.Height / 2f);
 
-            _tiles.Draw(batcher, Game.Assets, _player.WorldPosition, TileViewRange, screenCenter);
+            _tiles.Draw(batcher, Game.Assets, _player.WorldPosition, ComputeViewRange(), screenCenter, _drawStatics);
             _player.Draw(batcher, Game.Assets, screenCenter);
 
             batcher.End();
+        }
+
+        /// <summary>
+        /// Tiles to draw out from the player in each direction, sized so the
+        /// rendered diamond always covers the viewport rectangle - including
+        /// its corners - at the current zoom.
+        ///
+        /// The camera scales world pixels by 1/Zoom, so a screen half-extent
+        /// of `half` px corresponds to `half * Zoom` world px. A tile region
+        /// [-R, R] covers a screen diamond `|x| + |y| <= 44*R` (world px), so
+        /// the demanding viewport corner (halfW + halfH away in that L1 sense)
+        /// is covered when R >= Zoom * (halfW + halfH) / 44.
+        /// </summary>
+        private int ComputeViewRange()
+        {
+            float halfW = Camera.Bounds.Width / 2f;
+            float halfH = Camera.Bounds.Height / 2f;
+
+            int range = (int)Math.Ceiling(Camera.Zoom * (halfW + halfH) / TileDiagonalPixels);
+
+            return range + ViewRangeMargin;
         }
     }
 }

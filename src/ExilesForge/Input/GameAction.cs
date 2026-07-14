@@ -23,5 +23,6 @@ namespace TEF.Input
         OpenCharacterMenu,
         QuickSave,
         ToggleMenu,
+        ToggleStatics, // debug: show/hide static tiles
     }
 }

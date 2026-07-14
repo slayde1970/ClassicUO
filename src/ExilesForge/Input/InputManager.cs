@@ -35,6 +35,7 @@ namespace TEF.Input
             [GameAction.OpenCraftingMenu] = Keys.C,
             [GameAction.OpenCharacterMenu] = Keys.Tab,
             [GameAction.QuickSave] = Keys.F5,
+            [GameAction.ToggleStatics] = Keys.F6,
             [GameAction.ToggleMenu] = Keys.Escape,
         };
 
