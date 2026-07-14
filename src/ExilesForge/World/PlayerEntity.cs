@@ -58,14 +58,32 @@ namespace TEF.World
             if (IsMoving)
             {
                 move.Normalize();
+
+                // `move` is the desired ON-SCREEN direction (+X right, +Y
+                // down): W = up, D = right, etc. Facing is read straight off
+                // it so the character looks the way the player pushed.
                 Facing = DirectionHelper.FromVector(move);
 
-                if (input.IsActionDown(GameAction.Sprint))
+                // WorldPosition is in UO tile coords, which the tile renderer
+                // projects isometrically: iso(x, y) = ((x - y), (x + y)). So
+                // the same screen direction has to be converted into a tile
+                // delta with the inverse of that projection, or the map would
+                // scroll diagonally relative to the facing (screen "up" is a
+                // tile diagonal in iso space, not tile -Y). Inverse of
+                // iso(dx, dy) = (sx, sy) is (dx, dy) = ((sx + sy), (sy - sx)).
+                var tileDir = new Vector2(move.X + move.Y, move.Y - move.X);
+                if (tileDir != Vector2.Zero)
                 {
-                    move *= 1.75f;
+                    tileDir.Normalize();
                 }
 
-                WorldPosition += move * moveSpeed * Time.Delta;
+                float speed = moveSpeed;
+                if (input.IsActionDown(GameAction.Sprint))
+                {
+                    speed *= 1.75f;
+                }
+
+                WorldPosition += tileDir * speed * Time.Delta;
             }
 
             AdvanceAnimationFrame();
