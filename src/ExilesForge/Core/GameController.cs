@@ -31,6 +31,8 @@ namespace TEF.Core
             {
                 PreferredDepthStencilFormat = DepthFormat.Depth24Stencil8,
                 SynchronizeWithVerticalRetrace = false,
+                PreferredBackBufferWidth = 1600,
+                PreferredBackBufferHeight = 1024,
             };
 
             Window.AllowUserResizing = true;
