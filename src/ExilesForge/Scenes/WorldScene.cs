@@ -20,7 +20,9 @@ namespace TEF.Scenes
         // Britain Bank, Felucca - an arbitrary but well-known, always-valid
         // spawn point. Stand-in until there's real character-select/spawn
         // logic to pick this from.
-        private static readonly Vector2 SpawnTile = new(1436f, 1443f);
+
+        //private static readonly Vector2 SpawnTile = new(1395f, 1409f); // original spot
+        private static readonly Vector2 SpawnTile = new(1591f, 1518f); // bank
 
         // Iso constants: a tile steps 44px (2 * 22) diagonally per unit change
         // in the (x - y)/(x + y) axes, so the on-screen coverage of a square
