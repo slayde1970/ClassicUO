@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using ClassicUO.Assets;
 using ClassicUO.Renderer;
@@ -40,6 +41,8 @@ namespace TEF.Assets
         public Light Lights { get; private set; }
         public Sound Sounds { get; private set; }
         public FontGlyphAtlas GlyphAtlas { get; private set; }
+
+        private readonly HashSet<int> _loadedMaps = new();
 
         public unsafe void Load(GraphicsDevice device, GameSettings settings)
         {
@@ -97,6 +100,22 @@ namespace TEF.Assets
             Lights = new Light(Files.Lights, device);
             Sounds = new Sound(Files.Sounds);
             GlyphAtlas = new FontGlyphAtlas(Files.Fonts, device);
+        }
+
+        /// <summary>
+        /// UOFileManager.Load only opens the raw map/statics files - the
+        /// per-block index (UOFileManager.Maps.BlockData, used by GetIndex)
+        /// isn't populated until MapLoader.LoadMap(index) runs, which
+        /// ClassicUO.Client only calls once World.Map is assigned after
+        /// login (see Game/World.cs). TileRenderer calls this the first time
+        /// it touches a given map index.
+        /// </summary>
+        public void EnsureMapLoaded(int mapIndex)
+        {
+            if (_loadedMaps.Add(mapIndex))
+            {
+                Files.Maps.LoadMap(mapIndex);
+            }
         }
 
         public void Dispose()

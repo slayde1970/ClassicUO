@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 using ClassicUO.Renderer;
+using Microsoft.Xna.Framework;
 using TEF.Core;
 using TEF.Input;
 using TEF.World;
@@ -8,18 +9,32 @@ using TEF.World;
 namespace TEF.Scenes
 {
     /// <summary>
-    /// First playable surface: proves out the asset -> renderer -> input
-    /// pipeline with a player entity the camera zooms around. This is the
-    /// seam where map/tile rendering (ported from
-    /// ClassicUO.Client/Game/Scenes/GameScene.cs) and the survival/crafting
-    /// systems will attach as the project grows.
+    /// First playable surface: proves out the asset -> renderer -> input ->
+    /// map pipeline with a player entity standing on real UO land tiles. The
+    /// seam where statics, height-blended tile corners (see TileRenderer),
+    /// and the survival/crafting systems will attach as the project grows.
     /// </summary>
     public sealed class WorldScene : Scene
     {
+        // Britain Bank, Felucca - an arbitrary but well-known, always-valid
+        // spawn point. Stand-in until there's real character-select/spawn
+        // logic to pick this from.
+        private static readonly Vector2 SpawnTile = new(1436f, 1443f);
+        private const int TileViewRange = 15;
+
         private readonly PlayerEntity _player = new();
+        private readonly TileRenderer _tiles = new(mapIndex: 0);
 
         public WorldScene(GameController game) : base(game)
         {
+        }
+
+        public override void Load()
+        {
+            base.Load();
+
+            Camera.Zoom = 1f;
+            _player.Teleport(SpawnTile);
         }
 
         public override void Update(InputManager input)
@@ -53,7 +68,14 @@ namespace TEF.Scenes
             // (`batcher.Begin(null, Camera.ViewTransformMatrix)`).
             batcher.Begin(null, Camera.ViewTransformMatrix);
 
-            _player.Draw(batcher, Game.Assets);
+            // Camera only handles zoom/peek, not centering (world (0,0) maps
+            // to screen (0,0), the viewport's top-left) - so every world-space
+            // draw needs the viewport's center added explicitly to appear
+            // centered on the player.
+            var screenCenter = new Vector2(Camera.Bounds.Width / 2f, Camera.Bounds.Height / 2f);
+
+            _tiles.Draw(batcher, Game.Assets, _player.WorldPosition, TileViewRange, screenCenter);
+            _player.Draw(batcher, Game.Assets, screenCenter);
 
             batcher.End();
         }

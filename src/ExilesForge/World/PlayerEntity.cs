@@ -15,10 +15,15 @@ namespace TEF.World
     /// no stats, equipment, or network sync, just enough to drive a body
     /// animation off input. The player is always drawn at the world origin -
     /// same convention UO itself uses, where the camera never pans and the
-    /// world/map scrolls under a fixed, screen-centered player instead (see
-    /// ClassicUO.Renderer.Camera, which has no position field at all).
-    /// `WorldPosition` accumulates where the player "is" for whenever map/tile
-    /// streaming is added; it does not affect where the sprite is drawn.
+    /// world/map scrolls under a fixed, screen-centered player instead. Note
+    /// that ClassicUO.Renderer.Camera only handles zoom/peek, not centering -
+    /// its view matrix maps world (0,0) to screen (0,0), the viewport's
+    /// top-left corner. Centering is the caller's job (in ClassicUO.Client,
+    /// GameScene computes it from the player's own screen position); here,
+    /// WorldScene passes the viewport's center in as `screenCenterOffset`.
+    /// `WorldPosition` is in fractional UO tile coordinates (not pixels) so
+    /// it lines up directly with TileRenderer's map lookups and iso
+    /// projection; it does not affect where the sprite itself is drawn.
     /// </summary>
     public sealed class PlayerEntity
     {
@@ -33,7 +38,13 @@ namespace TEF.World
         public Direction Facing { get; private set; } = Direction.South;
         public bool IsMoving { get; private set; }
 
-        public void Update(InputManager input, float moveSpeed = 120f)
+        public void Teleport(Vector2 tilePosition)
+        {
+            WorldPosition = tilePosition;
+        }
+
+        /// <param name="moveSpeed">Tiles per second at normal (non-sprint) pace.</param>
+        public void Update(InputManager input, float moveSpeed = 4f)
         {
             var move = Vector2.Zero;
 
@@ -73,7 +84,7 @@ namespace TEF.World
             _frameIndex++;
         }
 
-        public void Draw(UltimaBatcher2D batcher, GameAssets assets)
+        public void Draw(UltimaBatcher2D batcher, GameAssets assets, Vector2 screenCenterOffset)
         {
             byte action = (byte)(IsMoving ? PeopleAnimationGroup.WalkUnarmed : PeopleAnimationGroup.Stand);
             byte dir = (byte)Facing;
@@ -103,7 +114,7 @@ namespace TEF.World
 
             batcher.Draw(
                 sprite.Texture,
-                new Vector2(x, y),
+                new Vector2(x, y) + screenCenterOffset,
                 sprite.UV,
                 ShaderHueTranslator.GetHueVector(hue),
                 0f,
