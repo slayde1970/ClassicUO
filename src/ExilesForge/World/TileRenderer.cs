@@ -17,18 +17,19 @@ namespace TEF.World
     /// read straight from the mul/uop map + statics files, mirroring what
     /// ClassicUO.Client's Game/Map/Chunk.cs loads per 8x8 block.
     ///
-    /// Land is drawn flat (each tile's own Z baked into its screen Y, like
-    /// LandView.cs's non-stretched branch). Statics are positioned with the
-    /// same art anchor math as View.DrawStatic ((w/2 - 22, h - 44) offset)
-    /// and drawn back-to-front by screen row so they overlap each other
-    /// correctly.
+    /// Land with a valid texmap and height variation is drawn from that
+    /// texmap, stretched to its neighbors' corner heights (DrawStretchedLand,
+    /// ported from Land.ApplyStretch + LandView.Draw) - this is what gives
+    /// rocky/mountain terrain its 3D silhouette and keeps it from showing as
+    /// black gaps. Flat land falls back to the plain land art. Statics are
+    /// positioned with the same art anchor math as View.DrawStatic
+    /// ((w/2 - 22, h - 44) offset) and drawn back-to-front by screen row so
+    /// they overlap each other correctly.
     ///
     /// KNOWN GAPS:
-    ///  - No height-stretched land. A first pass used DrawStretchedLand
-    ///    (ported from Land.ApplyStretch) to blend tile corners with their
-    ///    neighbors' heights; it produced a dense checkerboard of missing
-    ///    tiles - a bug in that stretched path, not the tile reads - so it's
-    ///    shelved. Slopes show a per-tile Z stair-step until that's fixed.
+    ///  - Stretched land uses flat (+Z) corner normals - the height SHAPE is
+    ///    correct but there's no directional lighting/shading on slopes yet
+    ///    (the normals are computed but not yet fed a light direction).
     ///  - No animated-static frames, no light sources, no per-object depth
     ///    vs. the player (the player always draws on top - see WorldScene).
     ///  - No real chunk cache: every block in view is re-read from disk each
@@ -131,15 +132,60 @@ namespace TEF.World
                         continue;
                     }
 
+                    float planarX = (tx - ty) * TileSize - TileSize;
+
+                    // Rocky/mountain (and other textured) land is drawn from a
+                    // TEXMAP stretched to its neighbors' corner heights, not
+                    // from the flat land art - the art for these tiles is
+                    // empty, which is why they showed as black gaps before.
+                    // Mirrors Land.ApplyStretch + LandView.Draw's stretched
+                    // branch: stretch only when the tile has a valid texmap
+                    // AND its neighborhood isn't perfectly flat.
+                    ushort texId = assets.Files.TileData.LandData[tileId].TexID;
+
+                    if (texId != 0
+                        && assets.Files.Texmaps.File.GetValidRefEntry(texId).Length > 0
+                        && TryBuildStretch(maps, mapIndex, tx, ty, z,
+                            out var yOffsets, out var nTop, out var nRight, out var nLeft, out var nBottom))
+                    {
+                        ref readonly var texmap = ref assets.Texmaps.GetTexmap(texId);
+                        if (texmap.Texture != null)
+                        {
+                            // Planar Y (no Z baked in) - DrawStretchedLand
+                            // applies each corner's own height via yOffsets.
+                            float stretchedY = (tx + ty) * TileSize - TileSize;
+                            var stretchedPos = new Vector2(planarX, stretchedY) - isoOrigin + screenCenterOffset;
+
+                            // SHADER_LAND is the land shader path that reads
+                            // the per-corner normals (currently flat - no
+                            // directional lighting yet, but the height
+                            // silhouette from yOffsets is correct).
+                            var landHue = new Vector3(0f, ShaderHueTranslator.SHADER_LAND, 1f);
+
+                            batcher.DrawStretchedLand(
+                                texmap.Texture,
+                                stretchedPos,
+                                texmap.UV,
+                                ref yOffsets,
+                                ref nTop,
+                                ref nRight,
+                                ref nLeft,
+                                ref nBottom,
+                                landHue,
+                                0f
+                            );
+                            continue;
+                        }
+                    }
+
                     ref readonly var sprite = ref assets.Art.GetLand(tileId);
                     if (sprite.Texture == null)
                     {
                         continue;
                     }
 
-                    float planarX = (tx - ty) * TileSize - TileSize;
-                    float planarY = (tx + ty) * TileSize - TileSize - (z << 2);
-                    var screenPos = new Vector2(planarX, planarY) - isoOrigin + screenCenterOffset;
+                    float flatY = (tx + ty) * TileSize - TileSize - (z << 2);
+                    var screenPos = new Vector2(planarX, flatY) - isoOrigin + screenCenterOffset;
 
                     batcher.Draw(
                         sprite.Texture,
@@ -223,6 +269,128 @@ namespace TEF.World
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Builds the corner-height offsets and per-corner normals for a
+        /// stretched land tile, and reports whether the tile should actually
+        /// stretch (its 3x3+ neighborhood isn't flat). Direct port of
+        /// ClassicUO.Client's Land.ApplyStretch. Returns false for a locally
+        /// flat tile, in which case the caller falls back to flat art.
+        /// </summary>
+        private bool TryBuildStretch(
+            MapLoader maps, int mapIndex, int x, int y, sbyte z,
+            out UltimaBatcher2D.YOffsets yOffsets,
+            out Vector3 normalTop, out Vector3 normalRight, out Vector3 normalLeft, out Vector3 normalBottom)
+        {
+            //  _____ _____
+            // | top | rig |
+            // |_____|_____|
+            // | lef | bot |
+            // |_____|_____|
+            sbyte zTop = z;
+            sbyte zRight = GetTileZ(maps, mapIndex, x + 1, y);
+            sbyte zLeft = GetTileZ(maps, mapIndex, x, y + 1);
+            sbyte zBottom = GetTileZ(maps, mapIndex, x + 1, y + 1);
+
+            yOffsets = new UltimaBatcher2D.YOffsets
+            {
+                Top = zTop * 4,
+                Right = zRight * 4,
+                Left = zLeft * 4,
+                Bottom = zBottom * 4,
+            };
+
+            //  _____ _____ _____ _____
+            // |     | t10 | t20 |     |
+            // |_____|_____|_____|_____|
+            // | t01 |  z  | t21 | t31 |
+            // |_____|_____|_____|_____|
+            // | t02 | t12 | t22 | t32 |
+            // |_____|_____|_____|_____|
+            // |     | t13 | t23 |     |
+            // |_____|_____|_____|_____|
+            sbyte t10 = GetTileZ(maps, mapIndex, x, y - 1);
+            sbyte t20 = GetTileZ(maps, mapIndex, x + 1, y - 1);
+            sbyte t01 = GetTileZ(maps, mapIndex, x - 1, y);
+            sbyte t21 = zRight;
+            sbyte t31 = GetTileZ(maps, mapIndex, x + 2, y);
+            sbyte t02 = GetTileZ(maps, mapIndex, x - 1, y + 1);
+            sbyte t12 = zLeft;
+            sbyte t22 = zBottom;
+            sbyte t32 = GetTileZ(maps, mapIndex, x + 2, y + 1);
+            sbyte t13 = GetTileZ(maps, mapIndex, x, y + 2);
+            sbyte t23 = GetTileZ(maps, mapIndex, x + 1, y + 2);
+
+            bool stretched = false;
+            stretched |= CalculateNormal(z, t10, t21, t12, t01, out normalTop);
+            stretched |= CalculateNormal(t21, t20, t31, t22, z, out normalRight);
+            stretched |= CalculateNormal(t22, t21, t32, t23, t12, out normalBottom);
+            stretched |= CalculateNormal(t12, z, t22, t13, t02, out normalLeft);
+
+            return stretched;
+        }
+
+        // Direct port of Land.CalculateNormal. Returns false (and a flat +Z
+        // normal) when the tile and all four neighbors share a height.
+        private static bool CalculateNormal(sbyte tile, sbyte top, sbyte right, sbyte bottom, sbyte left, out Vector3 normal)
+        {
+            if (tile == top && tile == right && tile == bottom && tile == left)
+            {
+                normal.X = 0;
+                normal.Y = 0;
+                normal.Z = 1f;
+
+                return false;
+            }
+
+            var u = new Vector3();
+            var v = new Vector3();
+            var ret = new Vector3();
+
+            u.X = -22;
+            u.Y = -22;
+            u.Z = (left - tile) * 4;
+            v.X = -22;
+            v.Y = 22;
+            v.Z = (bottom - tile) * 4;
+            Vector3.Cross(ref v, ref u, out ret);
+
+            u.X = -22;
+            u.Y = 22;
+            u.Z = (bottom - tile) * 4;
+            v.X = 22;
+            v.Y = 22;
+            v.Z = (right - tile) * 4;
+            Vector3.Cross(ref v, ref u, out normal);
+            Vector3.Add(ref ret, ref normal, out ret);
+
+            u.X = 22;
+            u.Y = 22;
+            u.Z = (right - tile) * 4;
+            v.X = 22;
+            v.Y = -22;
+            v.Z = (top - tile) * 4;
+            Vector3.Cross(ref v, ref u, out normal);
+            Vector3.Add(ref ret, ref normal, out ret);
+
+            u.X = 22;
+            u.Y = -22;
+            u.Z = (top - tile) * 4;
+            v.X = -22;
+            v.Y = -22;
+            v.Z = (left - tile) * 4;
+            Vector3.Cross(ref v, ref u, out normal);
+            Vector3.Add(ref ret, ref normal, out ret);
+
+            Vector3.Normalize(ref ret, out normal);
+
+            return true;
+        }
+
+        private sbyte GetTileZ(MapLoader maps, int mapIndex, int x, int y)
+        {
+            return TryGetTile(maps, mapIndex, x, y, out _, out sbyte z) ? z : (sbyte)0;
         }
 
         private bool TryGetTile(MapLoader maps, int mapIndex, int x, int y, out ushort tileId, out sbyte z)

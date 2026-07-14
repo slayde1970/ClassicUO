@@ -28,7 +28,7 @@ namespace TEF.Scenes
         private const int TileDiagonalPixels = 44;
         // A couple of extra rings so tall statics near the edge (whose art
         // extends well above their tile) don't pop in/out at the border.
-        private const int ViewRangeMargin = 3;
+        private const int ViewRangeMargin = 8;
 
         private readonly PlayerEntity _player = new();
         private readonly TileRenderer _tiles = new(mapIndex: 0);
@@ -70,6 +70,13 @@ namespace TEF.Scenes
             }
 
             Camera.Update(true, Time.Delta, input.MousePosition);
+
+            // Surface the live tile position in the title bar so it's easy to
+            // cross-reference a spot against the real ClassicUO client. UO tile
+            // coords are integers; WorldPosition is fractional, so floor it.
+            int tileX = (int)Math.Floor(_player.WorldPosition.X);
+            int tileY = (int)Math.Floor(_player.WorldPosition.Y);
+            Game.Window.Title = $"The Exile's Forge  -  map 0  ({tileX}, {tileY})";
         }
 
         public override void Draw(UltimaBatcher2D batcher)
