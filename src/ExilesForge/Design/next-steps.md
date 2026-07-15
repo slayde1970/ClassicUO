@@ -81,17 +81,31 @@ everything else builds on.
    harvests the specific tree entity under the cursor, replacing the earlier
    debug-key wiring.
 
-5. **UI / HUD layer** — **[STARTED]** first piece done: `UI/DebugHud.cs`, a
-   minimal screen-space overlay (its own `batcher.Begin()/End()`, no camera
-   matrix) using `Fonts.Bold`/`UltimaBatcher2D.DrawString`. FPS counter
-   (`Time.Fps`, tracked in `GameController.Draw`) always renders as the top
-   line when shown, with the tile/entity-under-cursor readout (from
-   `TileRenderer`'s picking) stacked below it - each independently
+5. ~~**UI / HUD layer**~~ **[DONE]** — `UI/DebugHud.cs`: a minimal
+   screen-space overlay (its own `batcher.Begin()/End()`, no camera matrix)
+   with a `Panel`-style dark translucent background sized to fit its text.
+   FPS counter (`Time.Fps`, tracked in `GameController.Draw`) always renders
+   as the top line when shown, with the tile/entity-under-cursor readout
+   (from `TileRenderer`'s picking) stacked below it - each independently
    toggleable (F8 debug info, F9 FPS; both default on), not tied together.
-   This is explicitly NOT the general control/gump system this item still
-   needs for inventory, crafting menus, survival bars, tooltips, etc. -
-   just enough text rendering plumbing proven out to build that on top of
-   later.
+
+   Also built the general-purpose lightweight control/gump system this item
+   needed beyond the narrow HUD: `UI/Control.cs` (base - local X/Y resolved
+   to screen space each frame, children, visibility, a `HitTestVisible` flag
+   so purely decorative controls like `Label` can't steal hover/click from
+   an interactive parent underneath them), `UI/UIManager.cs` (owns root
+   controls in Z order, recursive frontmost-wins hit-testing, routes
+   hover/click, exposes `IsMouseOverUI` so world input - e.g. click-to-
+   harvest - can be suppressed when a click actually lands on UI),
+   `UI/Controls/Label.cs`, `Panel.cs` (solid-color background via
+   `SolidColorTextureCache`), and `Button.cs` (Panel + Label + hover/click).
+   Verified end to end with a real "Resources" panel in `WorldScene`
+   (top-right corner, 5px margin from the screen edge, "Resources" title,
+   a live "Wood: N" counter that increments on harvest, and a "Reset"
+   button whose hover highlight and click both work correctly - including
+   while hovering directly over its label text - without also triggering a
+   harvest on a tree behind the panel). This is the foundation inventory
+   windows, crafting menus, survival bars, and tooltips will build on.
 
 ## Tier 3 — Simulation & durability
 
@@ -183,11 +197,8 @@ generally rather than special-casing trees specifically when the time comes.
 
 ## Recommended order
 
-Tier 1 (1 → 2 → 3) and Tier 2 item 4 (mouse picking) are now fully done. The
-"walk up to a tree, click it, chop it, get wood" loop is real end to end:
-picking resolves the specific tree entity under the cursor and a real
-left-click triggers `HarvestSystem.TryHarvest` on it. Next up is item 5
-(UI/HUD) to surface that loop to the player properly (right now feedback is
-just the title-bar hover text and the tree's own graphic swapping to a
-stump). Then Tier 3 (6/7/8) as gameplay systems start needing time, saves,
-and scale. Tier 4 last.
+Tier 1 and all of Tier 2 (mouse picking, UI/HUD + control system) are now
+fully done. The "walk up to a tree, click it, chop it, get wood" loop is
+real end to end, with a real UI counter surfacing it (the "Resources" panel)
+instead of just title-bar text. Next up is Tier 3 (6/7/8) as gameplay
+systems start needing time, saves, and scale. Tier 4 last.

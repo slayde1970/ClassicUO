@@ -21,6 +21,7 @@ namespace TEF.UI
     public sealed class DebugHud
     {
         private const int Margin = 10;
+        private const int Padding = 8;
         private const float LineGap = 4f;
 
         // A bright gold/yellow UO hue (commonly used for system/guild text in
@@ -28,6 +29,8 @@ namespace TEF.UI
         // enough - ShaderHueTranslator.GetHueVector looks this up as a
         // 1-based palette index, not a literal RGB value.
         private const int FpsHue = 0x0035;
+
+        private static readonly Color BackgroundColor = new(20, 20, 20, 200);
 
         public bool ShowDebugInfo { get; set; } = true;
         public bool ShowFps { get; set; } = true;
@@ -39,24 +42,9 @@ namespace TEF.UI
                 return;
             }
 
-            batcher.Begin();
+            string fpsLine = ShowFps ? $"FPS: {Time.Fps}" : null;
 
-            float y = Margin;
-
-            if (ShowFps)
-            {
-                string fpsLine = $"FPS: {Time.Fps}";
-
-                batcher.DrawString(
-                    Fonts.Bold,
-                    fpsLine,
-                    new Vector2(Margin, y),
-                    ShaderHueTranslator.GetHueVector(FpsHue),
-                    0f
-                );
-
-                y += Fonts.Bold.MeasureString(fpsLine).Y + LineGap;
-            }
+            string block = null;
 
             if (ShowDebugInfo)
             {
@@ -68,12 +56,55 @@ namespace TEF.UI
                     ? "Entity: -"
                     : $"Entity: {entityPick.Name} ({entityPick.TileX}, {entityPick.TileY})";
 
-                string block = tileLine + "\n" + entityLine;
+                block = tileLine + "\n" + entityLine;
+            }
 
+            // Measure everything up front so the background panel can be
+            // sized to fit before any text is drawn on top of it.
+            Vector2 fpsSize = fpsLine != null ? Fonts.Bold.MeasureString(fpsLine) : Vector2.Zero;
+            Vector2 blockSize = block != null ? Fonts.Bold.MeasureString(block) : Vector2.Zero;
+
+            float contentWidth = System.Math.Max(fpsSize.X, blockSize.X);
+            float contentHeight = fpsSize.Y + blockSize.Y + (fpsLine != null && block != null ? LineGap : 0f);
+
+            batcher.Begin();
+
+            var backgroundRect = new Rectangle(
+                Margin,
+                Margin,
+                (int)contentWidth + Padding * 2,
+                (int)contentHeight + Padding * 2
+            );
+
+            batcher.Draw(
+                SolidColorTextureCache.GetTexture(BackgroundColor),
+                backgroundRect,
+                ShaderHueTranslator.GetHueVector(0),
+                0f
+            );
+
+            float x = Margin + Padding;
+            float y = Margin + Padding;
+
+            if (fpsLine != null)
+            {
+                batcher.DrawString(
+                    Fonts.Bold,
+                    fpsLine,
+                    new Vector2(x, y),
+                    ShaderHueTranslator.GetHueVector(FpsHue),
+                    0f
+                );
+
+                y += fpsSize.Y + LineGap;
+            }
+
+            if (block != null)
+            {
                 batcher.DrawString(
                     Fonts.Bold,
                     block,
-                    new Vector2(Margin, y),
+                    new Vector2(x, y),
                     ShaderHueTranslator.GetHueVector(0),
                     0f
                 );

@@ -6,6 +6,7 @@ using Microsoft.Xna.Framework;
 using TEF.Core;
 using TEF.Input;
 using TEF.UI;
+using TEF.UI.Controls;
 using TEF.World;
 using TEF.World.Entities;
 
@@ -61,6 +62,17 @@ namespace TEF.Scenes
 
         private readonly DebugHud _hud = new();
 
+        // First real (non-debug) piece of UI built on the control system -
+        // a "Resources" panel showing wood harvested this session, with a
+        // Reset button. _woodCollected is a placeholder counter, not a real
+        // inventory system (that's later gameplay-design scope) - just
+        // enough live state to prove Panel+Label+Button+click routing all
+        // work together end to end.
+        private readonly UIManager _ui = new();
+        private readonly Panel _resourcePanel = new() { Width = 170, Height = 78 };
+        private readonly Label _woodLabel = new() { X = 10, Y = 30 };
+        private int _woodCollected;
+
         public bool PlayMusicOnStart = true;
         const int DEFAULT_MUSIC = 8;
 
@@ -69,9 +81,27 @@ namespace TEF.Scenes
             _entityRenderer = new EntityRenderSystem(_entities);
         }
 
+        private void BuildResourcePanel()
+        {
+            _resourcePanel.Children.Add(new Label { Text = "Resources", X = 10, Y = 8 });
+            _resourcePanel.Children.Add(_woodLabel);
+
+            var resetButton = new Button("Reset") { X = 10, Y = 52 };
+            resetButton.Clicked += () => _woodCollected = 0;
+            _resourcePanel.Children.Add(resetButton);
+
+            _ui.Add(_resourcePanel);
+        }
+
         public override void Load()
         {
             base.Load();
+
+            // Controls that measure text (Button, Label) need Fonts already
+            // initialized (GameController.LoadContent) - the scene
+            // constructor runs before that, so building the UI has to wait
+            // until here.
+            BuildResourcePanel();
 
             Camera.Zoom = 1f;
             _map = new WorldMap(Game.Assets, MapIndex);
@@ -151,13 +181,25 @@ namespace TEF.Scenes
                 _hud.ShowFps = !_hud.ShowFps;
             }
 
+            // Anchor the resource panel to the top-right corner (recomputed
+            // every frame so a window resize doesn't leave it stranded).
+            _resourcePanel.X = Camera.Bounds.Width - _resourcePanel.Width - 5;
+            _resourcePanel.Y = 10;
+            _woodLabel.Text = $"Wood: {_woodCollected}";
+
+            _ui.Update(input);
+
             // Left-click harvests whatever entity the cursor is actually over
-            // (resolved by the previous frame's Draw via mouse-picking).
-            if (input.IsMousePressed(MouseButton.Left)
+            // (resolved by the previous frame's Draw via mouse-picking) -
+            // unless the click actually landed on a UI panel (e.g. the
+            // Reset button), which should never also chop a tree behind it.
+            if (!_ui.IsMouseOverUI
+                && input.IsMousePressed(MouseButton.Left)
                 && _entityPick.Kind == PickKind.Entity
-                && _entities.Harvestables.ContainsKey(_entityPick.EntityId))
+                && _entities.Harvestables.ContainsKey(_entityPick.EntityId)
+                && HarvestSystem.TryHarvest(_entities, _entityPick.EntityId))
             {
-                HarvestSystem.TryHarvest(_entities, _entityPick.EntityId);
+                _woodCollected++;
             }
 
             HarvestSystem.Update(_entities, Time.Delta);
@@ -208,9 +250,10 @@ namespace TEF.Scenes
 
             batcher.End();
 
-            // Screen-space HUD - its own Begin/End (no camera matrix), drawn
-            // after the world so it always sits on top.
+            // Screen-space HUD/UI - each has its own Begin/End (no camera
+            // matrix), drawn after the world so they always sit on top.
             _hud.Draw(batcher, _tilePick, _entityPick);
+            _ui.Draw(batcher);
         }
 
         /// <summary>
