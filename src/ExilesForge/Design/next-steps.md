@@ -131,6 +131,50 @@ everything else builds on.
     is positioned), not a shared "world height" value - the two must never be
     allowed to disagree on where the ground actually is.
 
+## Deferred gameplay-design notes (game-dev phase, not engine phase)
+
+Ideas captured for later, once we're past the engine/world-foundation tiers
+above and into actual gameplay/skill development. Not scheduled into a tier
+yet on purpose.
+
+### Harvesting existing map-static trees (not just spawned entities)
+
+Right now `Harvestable` entities are ones we spawn ourselves (see
+`WorldScene.SpawnDebugTrees`) at hand-picked positions - there's no way yet
+to harvest one of the thousands of tree *statics* already placed in the raw
+map data everywhere. The user has seen this pattern work well in a custom
+RunUO server + matching custom ClassicUO client, and wants it for actual
+lumberjacking (a real gathering skill), likely in a later tier once
+gathering skills are being built - this note exists so the shape isn't
+forgotten before then:
+
+1. Player targets a static tree tile (via mouse-picking's `tilePick`, which
+   already resolves map statics - see Tier 2 item 4).
+2. That specific static instance gets *suppressed* from `WorldMap`'s draw
+   and pick output (needs a per-(tile, graphic) exclusion overlay -
+   `WorldMap`'s static list is cached straight from disk today and has no
+   concept of "hide this one instance"; walkability probably doesn't need to
+   change, since both the static and its stand-in entity are equally solid).
+3. An entity is spawned at that exact tile with the **same graphic** -
+   visually nothing changes at the moment of harvest start; the entity is
+   just now the "live" thing standing in for that tree.
+4. Harvesting depletes the entity exactly like today's debug trees
+   (`Appearance.Graphic` swaps to a trunk/stump graphic via `HarvestSystem`).
+5. After the respawn timer, instead of swapping the entity's graphic back to
+   a tree (today's behavior), the entity is **destroyed** and the
+   suppression from step 2 is lifted - the original map static reappears and
+   the tile fully reverts to being "just world data" again, with zero
+   lingering entity/memory footprint once nothing is mid-harvest.
+
+This turns "every tree instance ever harvested" from a permanent entity into
+a transient one that only exists while its harvest state differs from the
+map's default - important for memory/scale once this applies to every tree
+on the map rather than 3 debug ones. The suppression-overlay mechanism this
+needs (step 2) is also the natural building block for anything else that
+temporarily hides/replaces a map static (chopped-down rocks, mined ore
+veins, a wall knocked down and rebuilt, etc.), so it's worth designing once
+generally rather than special-casing trees specifically when the time comes.
+
 ## Recommended order
 
 Tier 1 (1 → 2 → 3) and Tier 2 item 4 (mouse picking) are now fully done. The

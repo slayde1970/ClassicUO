@@ -72,7 +72,7 @@ namespace TEF.World
         /// <param name="pickPosition">Cursor position in pre-camera-matrix (world-draw) space - e.g. Camera.MouseToWorldPosition(). Null to skip picking.</param>
         /// <param name="entityPick">The topmost live entity under the cursor this frame (Kind == Entity or None). Independent of <paramref name="tilePick"/> - an entity can be standing on any tile.</param>
         /// <param name="tilePick">The topmost map tile (a static if one is there, else the land) under the cursor this frame (Kind == Static, Land, or None). Never Entity - this is map data only.</param>
-        /// <param name="drawStatics">When false, skips the statics (and entity) pass (debug toggle to inspect the bare land layer).</param>
+        /// <param name="drawStatics">When false, skips MAP statics only (debug toggle to inspect land without clutter). Entities and the player always draw regardless.</param>
         public void Draw(
             UltimaBatcher2D batcher, WorldMap map, EntityRenderSystem entities, PlayerEntity player,
             int viewRangeInTiles, Vector2 screenCenterOffset,
@@ -144,16 +144,13 @@ namespace TEF.World
 
                     bool isPlayerTile = tx == centerX && ty == centerY;
 
-                    if (drawStatics)
-                    {
-                        DrawStaticsAt(
-                            batcher, map, assets, entities, tx, ty, isoOrigin, screenCenterOffset,
-                            isPlayerTile ? player : null, playerPriorityZ, screenCenterOffset);
-                    }
-                    else if (isPlayerTile)
-                    {
-                        DrawPlayerAndPick(batcher, assets, player, screenCenterOffset);
-                    }
+                    // Always call DrawStaticsAt - entities draw unconditionally
+                    // (see its drawMapStatics param), so this can't be skipped
+                    // wholesale the way the old drawStatics-off branch did, or
+                    // entities/the player would vanish along with map statics.
+                    DrawStaticsAt(
+                        batcher, map, assets, entities, drawStatics, tx, ty, isoOrigin, screenCenterOffset,
+                        isPlayerTile ? player : null, playerPriorityZ, screenCenterOffset);
                 }
             }
 
@@ -287,11 +284,15 @@ namespace TEF.World
         /// rather than getting their own interface/draw path.
         /// </summary>
         private void DrawStaticsAt(
-            UltimaBatcher2D batcher, WorldMap map, GameAssets assets, EntityRenderSystem entities,
+            UltimaBatcher2D batcher, WorldMap map, GameAssets assets, EntityRenderSystem entities, bool drawMapStatics,
             int tx, int ty, Vector2 isoOrigin, Vector2 screenCenterOffset,
             PlayerEntity player, int playerPriorityZ, Vector2 playerScreenCenter)
         {
-            var mapStatics = map.GetStaticsAt(tx, ty);
+            // Map statics are the only thing gated by drawMapStatics (the F6/F7
+            // debug toggles) - entities always draw regardless, so hiding map
+            // statics to declutter the view (or debug "is my entity even
+            // rendering") never hides the entities themselves.
+            var mapStatics = drawMapStatics ? map.GetStaticsAt(tx, ty) : null;
             var entityStatics = entities?.GetAt(tx, ty);
 
             List<WorldMap.StaticTile> list;
@@ -347,7 +348,13 @@ namespace TEF.World
                     playerDrawn = true;
                 }
 
-                if (!CanDrawStatic(assets, s.Graphic))
+                // CanDrawStatic exists to filter out "nodraw" placeholder
+                // spacer statics baked into the raw MAP DATA - it has no
+                // business rejecting a deliberately-placed entity (e.g. a
+                // NoDiagonal-flagged tree graphic, which many large scenery
+                // statics legitimately are), so it only runs for map-sourced
+                // entries.
+                if (s.EntityId == 0 && !CanDrawStatic(assets, s.Graphic))
                 {
                     continue;
                 }

@@ -36,6 +36,7 @@ namespace TEF.Input
             [GameAction.OpenCharacterMenu] = Keys.Tab,
             [GameAction.QuickSave] = Keys.F5,
             [GameAction.ToggleStatics] = Keys.F6,
+            [GameAction.ToggleMapStatics] = Keys.F7,
             [GameAction.ToggleMenu] = Keys.Escape,
         };
 

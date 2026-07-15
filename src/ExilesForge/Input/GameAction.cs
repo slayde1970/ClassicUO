@@ -24,5 +24,6 @@ namespace TEF.Input
         QuickSave,
         ToggleMenu,
         ToggleStatics, // debug: show/hide static tiles
+        ToggleMapStatics, // debug: show/hide MAP statics only - entities always draw regardless
     }
 }

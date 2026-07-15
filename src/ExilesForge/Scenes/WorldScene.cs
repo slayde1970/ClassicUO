@@ -47,6 +47,7 @@ namespace TEF.Scenes
         private readonly EntityRenderSystem _entityRenderer;
         private WorldMap _map;
         private bool _drawStatics = true;
+        private bool _drawMapStatics = true; // F7 - independent of F6, entities always draw regardless of either
 
         // What the cursor was over, produced by Draw and consumed on the next
         // frame's Update (one-frame lag - see PickResult). Tracked separately
@@ -131,6 +132,11 @@ namespace TEF.Scenes
                 _drawStatics = !_drawStatics;
             }
 
+            if (input.IsActionPressed(GameAction.ToggleMapStatics))
+            {
+                _drawMapStatics = !_drawMapStatics;
+            }
+
             // Left-click harvests whatever entity the cursor is actually over
             // (resolved by the previous frame's Draw via mouse-picking).
             if (input.IsMousePressed(MouseButton.Left)
@@ -184,7 +190,7 @@ namespace TEF.Scenes
             // Camera.MouseToWorldPosition so it lines up with sprite positions.
             _tiles.Draw(
                 batcher, _map, _entityRenderer, _player, ComputeViewRange(), screenCenter,
-                Camera.MouseToWorldPosition(), out _entityPick, out _tilePick, _drawStatics);
+                Camera.MouseToWorldPosition(), out _entityPick, out _tilePick, _drawStatics && _drawMapStatics);
 
             batcher.End();
         }
