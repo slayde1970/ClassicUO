@@ -61,6 +61,7 @@ namespace TEF.World.Entities
                     // sorts one step above a flat one at the same Z.
                     PriorityZ = (short)(transform.Z + (appearance.Height != 0 ? 1 : 0)),
                     ReadOrder = id, // stable tiebreaker, mirrors GetBlockStatics' read-order tiebreak
+                    EntityId = id,  // marks this entry as entity-sourced for mouse-picking
                 };
 
                 var key = (tx, ty);

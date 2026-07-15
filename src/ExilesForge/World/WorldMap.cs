@@ -29,6 +29,12 @@ namespace TEF.World
             public sbyte Z;
             public short PriorityZ;
             public int ReadOrder; // tiebreaker for a stable sort - see GetBlockStatics
+
+            // 0 for a real map static; the owning entity id when this entry
+            // was projected from an entity (EntityRenderSystem). Lets the
+            // shared render/merge path stay identical while mouse-picking can
+            // still tell "clicked an entity" from "clicked a map static".
+            public int EntityId;
         }
 
         public const int BlockSize = 8;

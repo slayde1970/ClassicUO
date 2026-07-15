@@ -38,6 +38,12 @@ namespace TEF.Core
             Window.AllowUserResizing = true;
             Window.Title = "The Exile's Forge";
 
+            // Show the OS cursor. FNA hides it by default; ClassicUO draws its
+            // own in-game cursor instead, but TEF has no custom cursor yet, so
+            // without this the mouse is invisible (can't tell what you're
+            // hovering/picking). Revisit if/when a themed UO cursor is added.
+            IsMouseVisible = true;
+
             IsFixedTimeStep = false;
             TargetElapsedTime = System.TimeSpan.FromMilliseconds(1000.0 / 250.0);
         }

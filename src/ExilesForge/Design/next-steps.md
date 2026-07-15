@@ -8,8 +8,9 @@ dependency-ordered.
 Current status (as of this writing): asset loading, rendering, action-mapped
 input, audio, an animated player with 8-way facing, land/static/stretched-
 terrain rendering, collision + player Z tracking, depth-sorted player/statics,
-and a working entity system are all done. See `World/TileRenderer.cs` for the
-current known gaps in the renderer itself.
+a working entity system, and mouse picking (land/static/entity/player) are
+all done. See `World/TileRenderer.cs` for the current known gaps in the
+renderer itself.
 
 ## Tier 1 — Core world interaction
 
@@ -53,10 +54,32 @@ everything else builds on.
 
 ## Tier 2 — Interaction & presentation surface
 
-4. **Mouse picking (tile + object under cursor)**
-   "What am I pointing at / what did I click." Every interaction — chop tree,
-   mine rock, place a wall — needs this. Uses the pixel-pick data the
-   renderer loaders already build (`Art.PixelCheck`, etc.).
+4. ~~**Mouse picking (tile + object under cursor)**~~ **[DONE]**
+   Rides the existing back-to-front render pass rather than a separate
+   spatial query, matching ClassicUO's `SelectedObject`: every candidate
+   drawn under the cursor is hit-tested as it's drawn, and since the pass is
+   back-to-front, the last (frontmost) hit wins for free. Statics/entities
+   use per-pixel alpha (`Art.PixelCheck`, keyed by graphic id); land uses a
+   cheap diamond bounds test (no per-pixel needed - it's a solid known
+   shape); the player uses a bounding-box test (a first attempt used
+   `Animations.PixelCheck`, the animation-frame equivalent, but its key has
+   more moving parts - frame numbering, body-conversion lookups - than
+   Art's plain per-graphic-id key, and it never registered a hit despite the
+   geometry matching exactly; not confidently debuggable without runtime
+   introspection, and a bounding box is an acceptable simplification for a
+   mostly-opaque standing humanoid).
+
+   Two independent results come out of `TileRenderer.Draw` each frame -
+   `entityPick` (topmost live entity or the player, if either is under the
+   cursor) and `tilePick` (topmost map static, falling back to land - map
+   data only, never an entity) - rather than one merged "winner", so game
+   code can ask each question separately (e.g. a harvest action wants the
+   entity; a "walk here" click wants the ground tile regardless of what's
+   standing on it). See `World/PickResult.cs`. Verified: hovering shows the
+   correct name (tiledata name for land/statics, "Player" for the player) in
+   the title bar for land, statics, entities, and the player; left-click
+   harvests the specific tree entity under the cursor, replacing the earlier
+   debug-key wiring.
 
 5. **UI / HUD layer**
    Text + panels using the renderer's `Fonts`/`FontGlyphAtlas`. Needed for
@@ -110,12 +133,11 @@ everything else builds on.
 
 ## Recommended order
 
-Tier 1 (1 → 2 → 3) is now fully done — they interlocked and defined the world
-model. Next up is Tier 2 (4 → 5) for interaction and UI. Then Tier 3 (6/7/8)
-as gameplay systems start needing time, saves, and scale. Tier 4 last.
-
-**Pivot point:** with items 1-3 done, mouse picking (item 4) is the next
-unblock toward a real gameplay loop (walk up to a tree, click it, chop it,
-get wood) - the `Harvestable` debug tree already proves the deplete/respawn
-half of that loop end to end; picking is what's needed to trigger it from a
-real click instead of a debug key.
+Tier 1 (1 → 2 → 3) and Tier 2 item 4 (mouse picking) are now fully done. The
+"walk up to a tree, click it, chop it, get wood" loop is real end to end:
+picking resolves the specific tree entity under the cursor and a real
+left-click triggers `HarvestSystem.TryHarvest` on it. Next up is item 5
+(UI/HUD) to surface that loop to the player properly (right now feedback is
+just the title-bar hover text and the tree's own graphic swapping to a
+stump). Then Tier 3 (6/7/8) as gameplay systems start needing time, saves,
+and scale. Tier 4 last.

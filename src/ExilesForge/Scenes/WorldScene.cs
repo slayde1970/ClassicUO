@@ -35,9 +35,9 @@ namespace TEF.Scenes
 
         private const int MapIndex = 0;
 
-        // Tree/stump graphics for the debug Harvestable spawned in Load() -
-        // proves out the entity system end to end (Design/prd-entity-system.md
-        // acceptance criteria) ahead of real mouse-picking/interaction.
+        // Tree/stump graphics for the debug Harvestables spawned in Load() -
+        // a stand-in for a real world-populate step; harvested by clicking
+        // (mouse-picking) them.
         private const ushort DebugTreeGraphic = 0x0CCA;
         private const ushort DebugStumpGraphic = 0x0E59; // ClassicUO's Constants.TREE_REPLACE_GRAPHIC
 
@@ -47,7 +47,15 @@ namespace TEF.Scenes
         private readonly EntityRenderSystem _entityRenderer;
         private WorldMap _map;
         private bool _drawStatics = true;
-        private int _debugTreeEntityId;
+
+        // What the cursor was over, produced by Draw and consumed on the next
+        // frame's Update (one-frame lag - see PickResult). Tracked separately
+        // so game code can ask for either independently - an entity can be
+        // standing on any tile, and scripting needs both (e.g. "chop this
+        // tree" wants the entity; "walk here" wants the ground tile
+        // underneath it, entity or not).
+        private PickResult _entityPick;
+        private PickResult _tilePick;
 
         public WorldScene(GameController game) : base(game)
         {
@@ -62,34 +70,40 @@ namespace TEF.Scenes
             _map = new WorldMap(Game.Assets, MapIndex);
             _player.Spawn(_map, SpawnTile);
 
-            SpawnDebugTree();
+            SpawnDebugTrees();
         }
 
-        private void SpawnDebugTree()
+        private void SpawnDebugTrees()
         {
-            var position = SpawnTile + new Vector2(3f, 0f);
-            int tx = (int)Math.Floor(position.X);
-            int ty = (int)Math.Floor(position.Y);
-            sbyte z = _map.ResolveSpawnZ(tx, ty);
+            // A small cluster near the spawn point so mouse-picking can be
+            // tested against several adjacent, overlapping trees (pick the
+            // right one, per-pixel through the branches, etc.).
+            Span<Vector2> offsets = [new(3f, 0f), new(4f, 1f), new(2f, 2f)];
 
             byte height = Game.Assets.Files.TileData.StaticData[DebugTreeGraphic].Height;
 
-            int id = _entities.CreateEntity();
-            _entities.Transforms[id] = new Transform { WorldPosition = position, Z = z };
-            _entities.Appearances[id] = new Appearance { Graphic = DebugTreeGraphic, Hue = 0, Height = height };
-            _entities.Harvestables[id] = new Harvestable
+            foreach (var offset in offsets)
             {
-                Resource = ResourceType.Wood,
-                YieldRemaining = 3,
-                YieldMax = 3,
-                AvailableGraphic = DebugTreeGraphic,
-                DepletedGraphic = DebugStumpGraphic,
-                IsDepleted = false,
-                RespawnDuration = 10f,
-            };
-            _entities.Interactables[id] = new Interactable();
+                var position = SpawnTile + offset;
+                int tx = (int)Math.Floor(position.X);
+                int ty = (int)Math.Floor(position.Y);
+                sbyte z = _map.ResolveSpawnZ(tx, ty);
 
-            _debugTreeEntityId = id;
+                int id = _entities.CreateEntity();
+                _entities.Transforms[id] = new Transform { WorldPosition = position, Z = z };
+                _entities.Appearances[id] = new Appearance { Graphic = DebugTreeGraphic, Hue = 0, Height = height };
+                _entities.Harvestables[id] = new Harvestable
+                {
+                    Resource = ResourceType.Wood,
+                    YieldRemaining = 3,
+                    YieldMax = 3,
+                    AvailableGraphic = DebugTreeGraphic,
+                    DepletedGraphic = DebugStumpGraphic,
+                    IsDepleted = false,
+                    RespawnDuration = 10f,
+                };
+                _entities.Interactables[id] = new Interactable();
+            }
         }
 
         public override void Update(InputManager input)
@@ -115,13 +129,13 @@ namespace TEF.Scenes
                 _drawStatics = !_drawStatics;
             }
 
-            // TEMP debug wiring for the entity system PRD's acceptance
-            // criteria (prove deplete/respawn end to end) ahead of real
-            // mouse-picking/interaction (Tier 2). Left click harvests the
-            // debug tree regardless of where the player/cursor actually are.
-            if (input.IsMousePressed(MouseButton.Left))
+            // Left-click harvests whatever entity the cursor is actually over
+            // (resolved by the previous frame's Draw via mouse-picking).
+            if (input.IsMousePressed(MouseButton.Left)
+                && _entityPick.Kind == PickKind.Entity
+                && _entities.Harvestables.ContainsKey(_entityPick.EntityId))
             {
-                HarvestSystem.TryHarvest(_entities, _debugTreeEntityId);
+                HarvestSystem.TryHarvest(_entities, _entityPick.EntityId);
             }
 
             HarvestSystem.Update(_entities, Time.Delta);
@@ -133,7 +147,16 @@ namespace TEF.Scenes
             // coords are integers; WorldPosition is fractional, so floor it.
             int tileX = (int)Math.Floor(_player.WorldPosition.X);
             int tileY = (int)Math.Floor(_player.WorldPosition.Y);
-            Game.Window.Title = $"The Exile's Forge  -  map {MapIndex}  ({tileX}, {tileY}, {_player.Z})";
+
+            // Report the entity under the cursor when there is one; otherwise
+            // fall back to the ground tile it's standing on (or the bare
+            // tile, if no entity at all). Both picks stay independently
+            // available on _entityPick/_tilePick for future scripting.
+            var headline = _entityPick.Kind != PickKind.None ? _entityPick : _tilePick;
+            string hover = headline.Kind == PickKind.None
+                ? ""
+                : $"  |  hover: {headline.Kind} {headline.Name} 0x{headline.Graphic:X4} @ ({headline.TileX}, {headline.TileY})";
+            Game.Window.Title = $"The Exile's Forge  -  map {MapIndex}  ({tileX}, {tileY}, {_player.Z}){hover}";
         }
 
         public override void Draw(UltimaBatcher2D batcher)
@@ -154,8 +177,12 @@ namespace TEF.Scenes
 
             // The player is drawn inside the tile pass (interleaved on its own
             // tile) so statics in front of it can occlude it - see
-            // TileRenderer.Draw.
-            _tiles.Draw(batcher, _map, _entityRenderer, _player, ComputeViewRange(), screenCenter, _drawStatics);
+            // TileRenderer.Draw. Mouse picking rides along the same pass: the
+            // cursor is converted into pre-matrix (world-draw) space via
+            // Camera.MouseToWorldPosition so it lines up with sprite positions.
+            _tiles.Draw(
+                batcher, _map, _entityRenderer, _player, ComputeViewRange(), screenCenter,
+                Camera.MouseToWorldPosition(), out _entityPick, out _tilePick, _drawStatics);
 
             batcher.End();
         }

@@ -170,22 +170,84 @@ namespace TEF.World
 
         public void Draw(UltimaBatcher2D batcher, GameAssets assets, Vector2 screenCenterOffset)
         {
-            byte action = (byte)(IsMoving ? PeopleAnimationGroup.WalkUnarmed : PeopleAnimationGroup.Stand);
-            byte dir = (byte)Facing;
-            bool mirror = false;
-
-            assets.Animations.GetAnimDirection(ref dir, ref mirror);
-
-            var frames = assets.Animations.GetAnimationFrames(Graphic, action, dir, out ushort hue, out _);
-            if (frames.IsEmpty)
+            if (!TryResolveFrame(assets, out var sprite, out var localOrigin, out bool mirror, out ushort hue, out _, out _, out _))
             {
                 return;
             }
 
-            ref readonly var sprite = ref frames[_frameIndex % frames.Length];
+            batcher.Draw(
+                sprite.Texture,
+                localOrigin + screenCenterOffset,
+                sprite.UV,
+                ShaderHueTranslator.GetHueVector(hue),
+                0f,
+                Vector2.Zero,
+                1f,
+                mirror ? SpriteEffects.FlipHorizontally : SpriteEffects.None,
+                0f
+            );
+        }
+
+        /// <summary>
+        /// Bounding-box hit test for the player's currently-drawn sprite
+        /// (not per-pixel, unlike TileRenderer's static/entity picking).
+        /// A first attempt used Animations.PixelCheck (the same pixel-alpha
+        /// mask ClassicUO's mobile mouse-selection uses), but its key is
+        /// built from frame/body-conversion bookkeeping with more moving
+        /// parts than Art's plain per-graphic-id key, and it never
+        /// registered a hit despite the geometry matching Draw exactly -
+        /// not confidently debuggable without runtime introspection. Bounding
+        /// box is an acceptable simplification here: a standing humanoid is
+        /// mostly opaque within its box, unlike trees/foliage where the gaps
+        /// matter a lot for clicking through to what's behind them. Shares
+        /// frame resolution with <see cref="Draw"/> so the hit test can
+        /// never drift from what's actually on screen.
+        /// </summary>
+        public bool TryPick(GameAssets assets, Point cursorPosition, Vector2 screenCenterOffset)
+        {
+            if (!TryResolveFrame(assets, out var sprite, out var localOrigin, out _, out _, out _, out _, out _))
+            {
+                return false;
+            }
+
+            var drawPos = localOrigin + screenCenterOffset;
+            int lx = cursorPosition.X - (int)drawPos.X;
+            int ly = cursorPosition.Y - (int)drawPos.Y;
+
+            return lx >= 0 && ly >= 0 && lx < sprite.UV.Width && ly < sprite.UV.Height;
+        }
+
+        /// <summary>
+        /// Resolves the current animation frame and its screen-local draw
+        /// origin (relative to the player's fixed screen anchor, before
+        /// adding screenCenterOffset). Shared by Draw and TryPick.
+        /// </summary>
+        private bool TryResolveFrame(
+            GameAssets assets,
+            out SpriteInfo sprite, out Vector2 localOrigin, out bool mirror,
+            out ushort hue, out bool useUOP, out byte action, out byte dir)
+        {
+            action = (byte)(IsMoving ? PeopleAnimationGroup.WalkUnarmed : PeopleAnimationGroup.Stand);
+            dir = (byte)Facing;
+            mirror = false;
+
+            assets.Animations.GetAnimDirection(ref dir, ref mirror);
+
+            var frames = assets.Animations.GetAnimationFrames(Graphic, action, dir, out hue, out useUOP);
+            if (frames.IsEmpty)
+            {
+                sprite = default;
+                localOrigin = default;
+                return false;
+            }
+
+            _frameIndex %= frames.Length;
+            sprite = frames[_frameIndex];
+
             if (sprite.Texture == null)
             {
-                return;
+                localOrigin = default;
+                return false;
             }
 
             // Always anchored at the world origin - the camera keeps the
@@ -195,18 +257,9 @@ namespace TEF.World
                 ? -(sprite.UV.Width - sprite.Center.X)
                 : -sprite.Center.X;
             float y = -(sprite.UV.Height + sprite.Center.Y);
+            localOrigin = new Vector2(x, y);
 
-            batcher.Draw(
-                sprite.Texture,
-                new Vector2(x, y) + screenCenterOffset,
-                sprite.UV,
-                ShaderHueTranslator.GetHueVector(hue),
-                0f,
-                Vector2.Zero,
-                1f,
-                mirror ? SpriteEffects.FlipHorizontally : SpriteEffects.None,
-                0f
-            );
+            return true;
         }
     }
 }

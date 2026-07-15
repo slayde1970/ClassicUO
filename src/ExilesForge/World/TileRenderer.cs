@@ -51,16 +51,39 @@ namespace TEF.World
         // own lists directly; both are cached/reused elsewhere.
         private readonly List<WorldMap.StaticTile> _mergedStatics = new();
 
+        // Mouse-pick state for the in-progress Draw pass (see PickResult).
+        // _pickPosition is the cursor in pre-camera-matrix space (same space
+        // as the sprites' screen positions), or null when not picking.
+        // Entities, map statics, and land are tracked as three INDEPENDENT
+        // topmost-hit trackers (not one merged "winner") so game code can ask
+        // "what entity is under the cursor" and "what tile is under the
+        // cursor" separately - e.g. scripting a harvest action needs the
+        // entity, while a tooltip or move-here click needs the ground tile
+        // regardless of whether an entity happens to be standing on it.
+        private Point? _pickPosition;
+        private PickResult _entityPick;
+        private PickResult _staticPick;
+        private PickResult _landPick;
+
         /// <param name="entities">Live world entities (resource nodes, etc.) to interleave into the same pass, in the same tuple shape as map statics. May be null to skip entirely.</param>
         /// <param name="player">The player, drawn interleaved into the back-to-front pass on its own tile so statics on tiles in front of it can occlude it. May be null.</param>
         /// <param name="viewRangeInTiles">How many tiles out from the player to draw in each direction.</param>
         /// <param name="screenCenterOffset">Viewport center - Camera only handles zoom/peek, not centering, so the caller supplies this (see PlayerEntity.Draw for the same convention).</param>
+        /// <param name="pickPosition">Cursor position in pre-camera-matrix (world-draw) space - e.g. Camera.MouseToWorldPosition(). Null to skip picking.</param>
+        /// <param name="entityPick">The topmost live entity under the cursor this frame (Kind == Entity or None). Independent of <paramref name="tilePick"/> - an entity can be standing on any tile.</param>
+        /// <param name="tilePick">The topmost map tile (a static if one is there, else the land) under the cursor this frame (Kind == Static, Land, or None). Never Entity - this is map data only.</param>
         /// <param name="drawStatics">When false, skips the statics (and entity) pass (debug toggle to inspect the bare land layer).</param>
         public void Draw(
             UltimaBatcher2D batcher, WorldMap map, EntityRenderSystem entities, PlayerEntity player,
-            int viewRangeInTiles, Vector2 screenCenterOffset, bool drawStatics = true)
+            int viewRangeInTiles, Vector2 screenCenterOffset,
+            Point? pickPosition, out PickResult entityPick, out PickResult tilePick, bool drawStatics = true)
         {
             var assets = map.Assets;
+
+            _pickPosition = pickPosition;
+            _entityPick = default;
+            _staticPick = default;
+            _landPick = default;
 
             var playerTilePosition = player.WorldPosition;
             int centerX = (int)Math.Floor(playerTilePosition.X);
@@ -129,10 +152,15 @@ namespace TEF.World
                     }
                     else if (isPlayerTile)
                     {
-                        player.Draw(batcher, assets, screenCenterOffset);
+                        DrawPlayerAndPick(batcher, assets, player, screenCenterOffset);
                     }
                 }
             }
+
+            entityPick = _entityPick;
+            // Map static beats land for the tile pick: only report a land
+            // hit when no static was under the cursor.
+            tilePick = _staticPick.Kind != PickKind.None ? _staticPick : _landPick;
         }
 
         private void DrawLandTile(
@@ -189,6 +217,12 @@ namespace TEF.World
                         landHue,
                         0f
                     );
+
+                    // Diamond hit test at the un-stretched position - an
+                    // approximation for stretched tiles (their corners are
+                    // pushed by yOffsets), fine since land picking is
+                    // secondary to object picking.
+                    TestLandPick(assets, stretchedPos, tx, ty, tileId);
                     return;
                 }
             }
@@ -209,6 +243,37 @@ namespace TEF.World
                 ShaderHueTranslator.GetHueVector(0),
                 0f
             );
+
+            TestLandPick(assets, screenPos, tx, ty, tileId);
+        }
+
+        /// <summary>
+        /// Land is picked by its iso-diamond shape (exact and cheap) rather
+        /// than the pixel picker: a point is inside the 44x44 tile's diamond
+        /// when |dx| + |dy| &lt;= 22 from its center. Recorded into _landPick
+        /// (not _pick) so any solid static/entity hit takes precedence.
+        /// </summary>
+        private void TestLandPick(GameAssets assets, Vector2 screenPos, int tx, int ty, ushort tileId)
+        {
+            if (_pickPosition is not Point p)
+            {
+                return;
+            }
+
+            float dx = p.X - (screenPos.X + TileSize);
+            float dy = p.Y - (screenPos.Y + TileSize);
+
+            if (Math.Abs(dx) + Math.Abs(dy) <= TileSize)
+            {
+                _landPick = new PickResult
+                {
+                    Kind = PickKind.Land,
+                    TileX = tx,
+                    TileY = ty,
+                    Graphic = tileId,
+                    Name = assets.Files.TileData.LandData[tileId].Name,
+                };
+            }
         }
 
         /// <summary>
@@ -259,7 +324,10 @@ namespace TEF.World
             {
                 // Nothing here, but the player still needs drawing if this
                 // is its tile.
-                player?.Draw(batcher, assets, playerScreenCenter);
+                if (player != null)
+                {
+                    DrawPlayerAndPick(batcher, assets, player, playerScreenCenter);
+                }
                 return;
             }
 
@@ -275,7 +343,7 @@ namespace TEF.World
                 // stable regardless of which statics are visible.
                 if (player != null && !playerDrawn && s.PriorityZ > playerPriorityZ)
                 {
-                    player.Draw(batcher, assets, playerScreenCenter);
+                    DrawPlayerAndPick(batcher, assets, player, playerScreenCenter);
                     playerDrawn = true;
                 }
 
@@ -308,12 +376,87 @@ namespace TEF.World
                     ShaderHueTranslator.GetHueVector(s.Hue, partialHue, 1f),
                     0f
                 );
+
+                TestStaticPick(assets, s, screenPos, sprite.UV.Width, sprite.UV.Height, tx, ty);
             }
 
             // Player sorts above every static on the tile.
             if (player != null && !playerDrawn)
             {
-                player.Draw(batcher, assets, playerScreenCenter);
+                DrawPlayerAndPick(batcher, assets, player, playerScreenCenter);
+            }
+        }
+
+        /// <summary>
+        /// Draws the player and, if picking is active, per-pixel hit-tests
+        /// its currently-drawn sprite (PlayerEntity.TryPick shares frame
+        /// resolution with its own Draw, so this can never drift out of sync
+        /// with what's actually on screen).
+        /// </summary>
+        private void DrawPlayerAndPick(UltimaBatcher2D batcher, GameAssets assets, PlayerEntity player, Vector2 screenCenterOffset)
+        {
+            player.Draw(batcher, assets, screenCenterOffset);
+
+            if (_pickPosition is Point p && player.TryPick(assets, p, screenCenterOffset))
+            {
+                _entityPick = new PickResult
+                {
+                    Kind = PickKind.Player,
+                    TileX = (int)MathF.Floor(player.WorldPosition.X),
+                    TileY = (int)MathF.Floor(player.WorldPosition.Y),
+                    Graphic = player.Graphic,
+                    Name = "Player",
+                };
+            }
+        }
+
+        /// <summary>
+        /// Per-pixel hit test for a static/entity sprite, using the same
+        /// pixel-alpha mask ClassicUO's StaticView.CheckMouseSelection uses
+        /// (Art.PixelCheck, keyed by the raw graphic id, populated by the
+        /// GetArt call just above). Because the pass is back-to-front, later
+        /// (frontmost) hits overwrite earlier ones, so the topmost visible
+        /// hit wins for free - tracked separately for entities vs. map
+        /// statics (see the _entityPick/_staticPick doc comment) so both are
+        /// independently available to game code, not just whichever "won".
+        /// </summary>
+        private void TestStaticPick(GameAssets assets, in WorldMap.StaticTile s, Vector2 screenPos, int width, int height, int tx, int ty)
+        {
+            if (_pickPosition is not Point p)
+            {
+                return;
+            }
+
+            int lx = p.X - (int)screenPos.X;
+            int ly = p.Y - (int)screenPos.Y;
+
+            if (lx < 0 || ly < 0 || lx >= width || ly >= height)
+            {
+                return;
+            }
+
+            if (!assets.Art.PixelCheck(s.Graphic, lx, ly))
+            {
+                return;
+            }
+
+            var result = new PickResult
+            {
+                Kind = s.EntityId != 0 ? PickKind.Entity : PickKind.Static,
+                TileX = tx,
+                TileY = ty,
+                Graphic = s.Graphic,
+                Name = assets.Files.TileData.StaticData[s.Graphic].Name,
+                EntityId = s.EntityId,
+            };
+
+            if (s.EntityId != 0)
+            {
+                _entityPick = result;
+            }
+            else
+            {
+                _staticPick = result;
             }
         }
 
