@@ -25,5 +25,7 @@ namespace TEF.Input
         ToggleMenu,
         ToggleStatics, // debug: show/hide static tiles
         ToggleMapStatics, // debug: show/hide MAP statics only - entities always draw regardless
+        ToggleDebugInfo, // debug: show/hide the tile/entity-under-cursor HUD text
+        ToggleFpsCounter, // debug: show/hide the FPS counter
     }
 }

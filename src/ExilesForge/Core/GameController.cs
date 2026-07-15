@@ -22,6 +22,8 @@ namespace TEF.Core
     public sealed class GameController : Game
     {
         private UltimaBatcher2D _batcher;
+        private int _frameCount;
+        private double _fpsElapsedMs;
 
         public GameController(GameSettings settings)
         {
@@ -109,6 +111,15 @@ namespace TEF.Core
             GraphicsDevice.Clear(Color.Black);
 
             Scenes.Draw(_batcher);
+
+            _frameCount++;
+            _fpsElapsedMs += gameTime.ElapsedGameTime.TotalMilliseconds;
+            if (_fpsElapsedMs >= 1000.0)
+            {
+                Time.Fps = _frameCount;
+                _frameCount = 0;
+                _fpsElapsedMs = 0;
+            }
 
             base.Draw(gameTime);
         }

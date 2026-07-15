@@ -37,6 +37,8 @@ namespace TEF.Input
             [GameAction.QuickSave] = Keys.F5,
             [GameAction.ToggleStatics] = Keys.F6,
             [GameAction.ToggleMapStatics] = Keys.F7,
+            [GameAction.ToggleDebugInfo] = Keys.F8,
+            [GameAction.ToggleFpsCounter] = Keys.F9,
             [GameAction.ToggleMenu] = Keys.Escape,
         };
 

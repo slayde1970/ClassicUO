@@ -81,11 +81,17 @@ everything else builds on.
    harvests the specific tree entity under the cursor, replacing the earlier
    debug-key wiring.
 
-5. **UI / HUD layer**
-   Text + panels using the renderer's `Fonts`/`FontGlyphAtlas`. Needed for
-   survival bars (hunger/thirst/health), inventory windows, crafting menus,
-   tooltips. A meaningful subsystem on its own (a lightweight control/gump
-   system) — budget real time for it.
+5. **UI / HUD layer** — **[STARTED]** first piece done: `UI/DebugHud.cs`, a
+   minimal screen-space overlay (its own `batcher.Begin()/End()`, no camera
+   matrix) using `Fonts.Bold`/`UltimaBatcher2D.DrawString`. FPS counter
+   (`Time.Fps`, tracked in `GameController.Draw`) always renders as the top
+   line when shown, with the tile/entity-under-cursor readout (from
+   `TileRenderer`'s picking) stacked below it - each independently
+   toggleable (F8 debug info, F9 FPS; both default on), not tied together.
+   This is explicitly NOT the general control/gump system this item still
+   needs for inventory, crafting menus, survival bars, tooltips, etc. -
+   just enough text rendering plumbing proven out to build that on top of
+   later.
 
 ## Tier 3 — Simulation & durability
 

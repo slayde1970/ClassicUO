@@ -5,6 +5,7 @@ using ClassicUO.Renderer;
 using Microsoft.Xna.Framework;
 using TEF.Core;
 using TEF.Input;
+using TEF.UI;
 using TEF.World;
 using TEF.World.Entities;
 
@@ -58,7 +59,10 @@ namespace TEF.Scenes
         private PickResult _entityPick;
         private PickResult _tilePick;
 
+        private readonly DebugHud _hud = new();
+
         public bool PlayMusicOnStart = true;
+        const int DEFAULT_MUSIC = 8;
 
         public WorldScene(GameController game) : base(game)
         {
@@ -124,7 +128,7 @@ namespace TEF.Scenes
 
             if (PlayMusicOnStart || input.IsActionPressed(GameAction.Interact))
             {
-                Game.Audio.PlayMusic(8); // "stones2" - the classic-era login theme, ships with every client
+                Game.Audio.PlayMusic(DEFAULT_MUSIC); // "stones2" - the classic-era login theme, ships with every client
             }
 
             if (input.IsActionPressed(GameAction.ToggleStatics))
@@ -135,6 +139,16 @@ namespace TEF.Scenes
             if (input.IsActionPressed(GameAction.ToggleMapStatics))
             {
                 _drawMapStatics = !_drawMapStatics;
+            }
+
+            if (input.IsActionPressed(GameAction.ToggleDebugInfo))
+            {
+                _hud.ShowDebugInfo = !_hud.ShowDebugInfo;
+            }
+
+            if (input.IsActionPressed(GameAction.ToggleFpsCounter))
+            {
+                _hud.ShowFps = !_hud.ShowFps;
             }
 
             // Left-click harvests whatever entity the cursor is actually over
@@ -193,6 +207,10 @@ namespace TEF.Scenes
                 Camera.MouseToWorldPosition(), out _entityPick, out _tilePick, _drawStatics && _drawMapStatics);
 
             batcher.End();
+
+            // Screen-space HUD - its own Begin/End (no camera matrix), drawn
+            // after the world so it always sits on top.
+            _hud.Draw(batcher, _tilePick, _entityPick);
         }
 
         /// <summary>
