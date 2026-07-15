@@ -202,8 +202,6 @@ namespace TEF.Scenes
                 _woodCollected++;
             }
 
-            HarvestSystem.Update(_entities, Time.Delta);
-
             Camera.Update(true, Time.Delta, input.MousePosition);
 
             // Surface the live tile position in the title bar so it's easy to
@@ -221,6 +219,14 @@ namespace TEF.Scenes
                 ? ""
                 : $"  |  hover: {headline.Kind} {headline.Name} 0x{headline.Graphic:X4} @ ({headline.TileX}, {headline.TileY})";
             Game.Window.Title = $"The Exile's Forge  -  map {MapIndex}  ({tileX}, {tileY}, {_player.Z}){hover}";
+        }
+
+        // Resource respawn hangs off the fixed simulation tick (Tier 3 #6),
+        // not Update's variable render Delta, so timers behave the same
+        // regardless of framerate.
+        public override void FixedUpdate(float fixedDelta)
+        {
+            HarvestSystem.Update(_entities, fixedDelta);
         }
 
         public override void Draw(UltimaBatcher2D batcher)
@@ -252,7 +258,7 @@ namespace TEF.Scenes
 
             // Screen-space HUD/UI - each has its own Begin/End (no camera
             // matrix), drawn after the world so they always sit on top.
-            _hud.Draw(batcher, _tilePick, _entityPick);
+            _hud.Draw(batcher, _tilePick, _entityPick, Game.World);
             _ui.Draw(batcher);
         }
 

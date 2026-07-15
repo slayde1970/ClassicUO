@@ -42,6 +42,11 @@ namespace TEF.Scenes
         {
         }
 
+        /// <summary>Fixed-step simulation tick (see SimulationClock) - survival timers, resource respawn, etc. should hang off this, not Update's variable Delta.</summary>
+        public virtual void FixedUpdate(float fixedDelta)
+        {
+        }
+
         public virtual void Draw(UltimaBatcher2D batcher)
         {
         }

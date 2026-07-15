@@ -109,9 +109,19 @@ everything else builds on.
 
 ## Tier 3 — Simulation & durability
 
-6. **Game clock + simulation tick**
-   A stable fixed-step tick separate from render, plus a world clock.
-   Survival timers, resource respawn, and day/night all hang off this.
+6. ~~**Game clock + simulation tick**~~ **[DONE]** — `Core/SimulationClock.cs`,
+   a fixed-step accumulator (20 Hz, `MaxTicksPerFrame` guard against the
+   spiral of death) decoupled from the variable render frame rate.
+   `Core/WorldClock.cs` tracks in-game day/time (`Day`, `Hour`, `Minute`,
+   12-hour `Hour12`/`MeridiemTag`), advanced only on the fixed tick;
+   `DayLengthSeconds` is a tunable placeholder (day/night lighting itself is
+   still Tier 4). `Scene.FixedUpdate(float)` is a new virtual hook, wired
+   through `SceneManager` and driven from `GameController.Update` alongside
+   `WorldClock.Advance`. `HarvestSystem.Update` (tree respawn timers) moved
+   off `Update`'s variable `Time.Delta` and onto this fixed tick in
+   `WorldScene.FixedUpdate`, so respawn timing no longer depends on
+   framerate. Verified: the debug HUD's "Time: Day N HH:MM AM/PM" line
+   counts up correctly, and chopping a tree still respawns it after ~10s.
 
 7. **Persistence (save/load)**
    A single-player sandbox needs it, and it's cheaper to design the

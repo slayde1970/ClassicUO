@@ -56,6 +56,8 @@ namespace TEF.Core
         public AudioManager Audio { get; } = new AudioManager();
         public InputManager Input { get; } = new InputManager();
         public SceneManager Scenes { get; } = new SceneManager();
+        public SimulationClock Sim { get; } = new SimulationClock();
+        public WorldClock World { get; } = new WorldClock();
 
         protected override void Initialize()
         {
@@ -102,6 +104,14 @@ namespace TEF.Core
             Input.Update();
             Scenes.Update(Input);
             Audio.Update();
+
+            Sim.Advance(Time.Delta, fixedDelta =>
+            {
+                World.Advance(fixedDelta);
+                Scenes.FixedUpdate(fixedDelta);
+            });
+
+            Time.SimTicks = Sim.TickCount;
 
             base.Update(gameTime);
         }

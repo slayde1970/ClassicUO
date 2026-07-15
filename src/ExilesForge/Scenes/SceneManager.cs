@@ -40,6 +40,14 @@ namespace TEF.Scenes
             }
         }
 
+        public void FixedUpdate(float fixedDelta)
+        {
+            if (Current is { IsLoaded: true, IsDestroyed: false })
+            {
+                Current.FixedUpdate(fixedDelta);
+            }
+        }
+
         public void Draw(UltimaBatcher2D batcher)
         {
             if (Current is { IsLoaded: true, IsDestroyed: false })
