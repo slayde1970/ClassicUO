@@ -195,15 +195,19 @@ harder later.
 
 ## 5. Acceptance criteria for this phase
 
-- `EntityWorld` + the four components above exist and compile.
-- At least one `Harvestable` resource node (e.g. a tree) is spawned in
+- [x] `EntityWorld` + the four components above exist and compile.
+- [x] At least one `Harvestable` resource node (e.g. a tree) is spawned in
   `WorldScene`, renders correctly interleaved with land/statics/player
   (occludes and is occluded correctly - walk behind it, stand in front of
   it), and its `PriorityZ` is derived from `Appearance.Height` per 4.5.
-- `HarvestSystem` can deplete and respawn that node's state end-to-end
+  Verified: `WorldScene.SpawnDebugTree` spawns a tree 3 tiles east of spawn;
+  player confirmed walking behind it correctly.
+- [x] `HarvestSystem` can deplete and respawn that node's state end-to-end
   (even without a player-facing harvest *action* yet — a debug key or direct
-  call is fine to prove the countdown/graphic-swap logic works).
-- No regression in existing land/static/player depth sorting.
+  call is fine to prove the countdown/graphic-swap logic works). Verified via
+  a left-click debug trigger in `WorldScene.Update` (tree -> stump on
+  depletion, stump -> tree after the 10s respawn countdown).
+- [x] No regression in existing land/static/player depth sorting.
 
 ## 6. Open questions carried forward (not blocking this phase)
 
