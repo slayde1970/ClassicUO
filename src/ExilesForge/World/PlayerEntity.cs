@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
+using System;
 using ClassicUO.Assets;
 using ClassicUO.Renderer;
 using Microsoft.Xna.Framework;
@@ -38,13 +39,26 @@ namespace TEF.World
         public Direction Facing { get; private set; } = Direction.South;
         public bool IsMoving { get; private set; }
 
-        public void Teleport(Vector2 tilePosition)
+        /// <summary>
+        /// Surface Z the player is standing on (UO z units), snapped per tile.
+        /// Used as-is (not eased) for the world's vertical draw offset in
+        /// TileRenderer.Draw - an earlier version eased this visually, which
+        /// caused the ground to briefly render at the wrong height relative
+        /// to the player while walking across a height boundary (invisible
+        /// once the ease caught up at rest, so it read as intermittent
+        /// clipping). Height changes now snap instantly; UO's actual per-tile
+        /// height steps are small enough that this isn't jarring.
+        /// </summary>
+        public sbyte Z { get; private set; }
+
+        public void Spawn(WorldMap map, Vector2 tilePosition)
         {
             WorldPosition = tilePosition;
+            Z = map.ResolveSpawnZ((int)MathF.Floor(tilePosition.X), (int)MathF.Floor(tilePosition.Y));
         }
 
         /// <param name="moveSpeed">Tiles per second at normal (non-sprint) pace.</param>
-        public void Update(InputManager input, float moveSpeed = 4f)
+        public void Update(InputManager input, WorldMap map, float moveSpeed = 4f)
         {
             var move = Vector2.Zero;
 
@@ -83,10 +97,62 @@ namespace TEF.World
                     speed *= 1.75f;
                 }
 
-                WorldPosition += tileDir * speed * Time.Delta;
+                TryMove(map, tileDir * speed * Time.Delta);
             }
 
             AdvanceAnimationFrame();
+        }
+
+        /// <summary>
+        /// Attempts to move by <paramref name="delta"/> tiles, respecting
+        /// walkability. If the full move would enter a blocked tile, it retries
+        /// the X and Y components separately so the player slides along walls
+        /// instead of sticking. Movement within the current tile is always
+        /// allowed; only crossing into a new tile is tested.
+        /// </summary>
+        private void TryMove(WorldMap map, Vector2 delta)
+        {
+            if (TryStep(map, new Vector2(delta.X, delta.Y)))
+            {
+                return;
+            }
+
+            // Blocked diagonally - try sliding along one axis, then the other.
+            if (delta.X != 0f && TryStep(map, new Vector2(delta.X, 0f)))
+            {
+                return;
+            }
+
+            if (delta.Y != 0f)
+            {
+                TryStep(map, new Vector2(0f, delta.Y));
+            }
+        }
+
+        private bool TryStep(WorldMap map, Vector2 delta)
+        {
+            var candidate = WorldPosition + delta;
+
+            int fromX = (int)MathF.Floor(WorldPosition.X);
+            int fromY = (int)MathF.Floor(WorldPosition.Y);
+            int toX = (int)MathF.Floor(candidate.X);
+            int toY = (int)MathF.Floor(candidate.Y);
+
+            // Same tile - no walkability change, just slide within it.
+            if (toX == fromX && toY == fromY)
+            {
+                WorldPosition = candidate;
+                return true;
+            }
+
+            if (map.TryGetStandZ(toX, toY, Z, out sbyte newZ))
+            {
+                WorldPosition = candidate;
+                Z = newZ;
+                return true;
+            }
+
+            return false;
         }
 
         private void AdvanceAnimationFrame()

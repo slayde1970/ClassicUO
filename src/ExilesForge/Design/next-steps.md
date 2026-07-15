@@ -6,27 +6,38 @@ unblocks; items within a tier can be reordered but the tiers themselves are
 dependency-ordered.
 
 Current status (as of this writing): asset loading, rendering, action-mapped
-input, audio, an animated player with 8-way facing, and land/static/stretched-
-terrain rendering are all working. See `World/TileRenderer.cs` for the current
-known gaps in the renderer itself.
+input, audio, an animated player with 8-way facing, land/static/stretched-
+terrain rendering, and collision + player Z tracking are all working. See
+`World/TileRenderer.cs` for the current known gaps in the renderer itself.
 
 ## Tier 1 — Core world interaction
 
 Gameplay can't really start without these; they define the world model
 everything else builds on.
 
-1. **Collision & walkability + player Z tracking**
-   The player currently free-floats in 2D tile space, ignoring terrain height
-   and obstacles. Needed: read the surface Z at the player's tile so they
-   stand *on* the ground (and step up/down slopes), and block movement into
-   impassable tiles, water, and statics flagged `Impassable`. `TileData` flags
-   and the statics already read by `TileRenderer` provide everything needed.
+1. ~~**Collision & walkability + player Z tracking**~~ **[DONE]**
+   Extracted a shared `World/WorldMap.cs` data layer (persistent block/statics
+   cache) used by both the renderer and gameplay. Player stands on the surface
+   Z, and movement is blocked into impassable land (water/mountains) and
+   Surface/Impassable statics, with wall-sliding on blocked diagonals.
+   `WorldMap.TryGetStandZ` is the walkability check. Height changes snap
+   instantly (an eased visual transition was tried and reverted — see Tier 4
+   item 11).
+   - Remaining polish (deferred, "good enough for now"): a few minor collision
+     edge cases; `MaxStepUp` climb allowance is a tunable constant that could
+     be refined; `WorldMap`'s block cache has no eviction yet (folds into the
+     chunk-cache item).
 
-2. **Depth sorting: player/entities interleaved with statics**
-   The player currently always draws on top of everything. Fold the player
-   (and future entities) into the same back-to-front pass as statics, keyed
-   on tile position + Z, so the player can walk behind walls and buildings.
-   Natural extension of the diagonal static pass already in `TileRenderer`.
+2. ~~**Depth sorting: player/entities interleaved with statics**~~ **[DONE]**
+   The player is now drawn inside `TileRenderer`'s back-to-front pass,
+   interleaved on its own tile at `priorityZ = Z + 1` (matching
+   `Chunk.AddGameObject`'s mobile priority) so statics in front of or above it
+   correctly occlude it. Uncovered and fixed two related bugs along the way:
+   (a) the world's iso origin was missing the same "-22" screen-position bias
+   every land/static tile applies (`GameObject.UpdateRealScreenPosition`),
+   causing the player to render offset from everything else and become
+   partly hidden behind unrelated terrain; (b) see Tier 4 item 11 for the
+   eased-Z-transition clipping bug this also exposed.
 
 3. **Entity system**
    A general world-object model beyond the single `PlayerEntity` — NPCs,
@@ -75,6 +86,22 @@ everything else builds on.
     Animated statics (flames, water); a config file instead of the hardcoded
     `--uopath`/`--clientversion` defaults in `Program.cs`; main-menu /
     character-spawn scenes instead of a fixed spawn tile.
+
+11. **Smooth Z transitions (revisit in a final polish pass)**
+    Player height changes currently snap instantly (see `PlayerEntity.Z`'s doc
+    comment) rather than easing, on purpose: a first attempt eased a separate
+    `RenderZ` toward the logical `Z` and used it for the world's vertical draw
+    offset, but `TileRenderer` positions terrain using each tile's own true,
+    un-eased Z - so during the ease window after crossing a height boundary,
+    the ground briefly rendered at the wrong offset relative to the player's
+    fixed feet position. This only showed up while walking (never at rest,
+    once the ease caught up), which made it confusing to track down. Snapping
+    instantly sidesteps the whole class of bug and isn't very jarring in
+    practice since UO's per-tile height steps are small. If a smooth step
+    feels worth adding back later, it needs to be purely cosmetic on the
+    player SPRITE draw (a bob that doesn't feed into where the world/terrain
+    is positioned), not a shared "world height" value - the two must never be
+    allowed to disagree on where the ground actually is.
 
 ## Recommended order
 

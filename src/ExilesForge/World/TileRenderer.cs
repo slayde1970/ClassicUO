@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Runtime.InteropServices;
-using ClassicUO.Assets;
 using ClassicUO.Renderer;
 using Microsoft.Xna.Framework;
 using TEF.Assets;
@@ -13,9 +9,9 @@ namespace TEF.World
 {
     /// <summary>
     /// Draws the world floor under the player: land tiles and the statics
-    /// (walls, trees, floors, deco) that sit on top of them, read straight
-    /// from the mul/uop map + statics files, mirroring what
-    /// ClassicUO.Client's Game/Map/Chunk.cs loads per 8x8 block.
+    /// (walls, trees, floors, deco) that sit on top of them. Tile/static data
+    /// comes from a shared <see cref="WorldMap"/>; this class is purely the
+    /// rendering half.
     ///
     /// Land and statics are interleaved into ONE back-to-front painter's-
     /// algorithm pass, walking diagonals of increasing (tx + ty): for each
@@ -24,10 +20,9 @@ namespace TEF.World
     /// statics on the same tile via a lower priorityZ. This matters because
     /// stretched land (see TryBuildStretch) and tall statics both reach
     /// beyond their own tile's footprint into neighboring tiles' screen
-    /// space; an earlier version drew ALL land, then ALL statics, in two
-    /// separate passes, which let a static from a "farther back" tile paint
-    /// over land from a tile genuinely in front of it (e.g. a river static
-    /// painting over the hillside/road in front of it).
+    /// space; drawing all land then all statics in two separate passes let a
+    /// static from a "farther back" tile paint over land genuinely in front
+    /// of it (e.g. a river static over the hillside/road in front of it).
     ///
     /// Land with a valid texmap and height variation is drawn from that
     /// texmap, stretched to its neighbors' corner heights (DrawStretchedLand,
@@ -39,71 +34,61 @@ namespace TEF.World
     ///
     /// KNOWN GAPS:
     ///  - Stretched land uses flat (+Z) corner normals - the height SHAPE is
-    ///    correct but there's no directional lighting/shading on slopes yet
-    ///    (the normals are computed but not yet fed a light direction).
+    ///    correct but there's no directional lighting/shading on slopes yet.
     ///  - No animated-static frames, no light sources, no per-object depth
     ///    vs. the player (the player always draws on top - see WorldScene).
-    ///  - No real chunk cache: every block in view is re-read from disk each
-    ///    frame (cleared below), unlike ClassicUO.Client's Map.cs + Chunk.cs
-    ///    which load a block once and keep it until the player moves away.
     /// </summary>
     public sealed class TileRenderer
     {
         private const int TileSize = 22; // half-width/height of the 44x44 iso diamond, see GameObject.UpdateRealScreenPosition
-        private const int BlockSize = 8;
+        private const int BlockSize = WorldMap.BlockSize;
 
-        private struct StaticTile
-        {
-            public ushort Graphic;
-            public ushort Hue;
-            public sbyte Z;
-            public short PriorityZ;
-            public int ReadOrder; // tiebreaker for a stable sort - see GetStatics
-        }
-
-        private readonly int _mapIndex;
-        private readonly Dictionary<long, MapBlock?> _blockCache = new();
-
-        // Per-block statics, grouped by local cell index ((localY << 3) + localX),
-        // each cell sorted low-to-high by PriorityZ (see ComputePriorityZ), not
-        // raw Z. Rebuilt every frame alongside _blockCache.
-        private readonly Dictionary<long, List<StaticTile>[]> _staticCache = new();
-
-        public TileRenderer(int mapIndex = 0)
-        {
-            _mapIndex = mapIndex;
-        }
-
-        /// <param name="playerTilePosition">Player position in fractional tile coordinates (not pixels).</param>
+        /// <param name="player">The player, drawn interleaved into the back-to-front pass on its own tile so statics on tiles in front of it can occlude it. May be null.</param>
         /// <param name="viewRangeInTiles">How many tiles out from the player to draw in each direction.</param>
         /// <param name="screenCenterOffset">Viewport center - Camera only handles zoom/peek, not centering, so the caller supplies this (see PlayerEntity.Draw for the same convention).</param>
         /// <param name="drawStatics">When false, skips the statics pass (debug toggle to inspect the bare land layer).</param>
-        public void Draw(UltimaBatcher2D batcher, GameAssets assets, Vector2 playerTilePosition, int viewRangeInTiles, Vector2 screenCenterOffset, bool drawStatics = true)
+        public void Draw(
+            UltimaBatcher2D batcher, WorldMap map, PlayerEntity player,
+            int viewRangeInTiles, Vector2 screenCenterOffset, bool drawStatics = true)
         {
-            _blockCache.Clear();
-            _staticCache.Clear();
+            var assets = map.Assets;
 
-            int mapIndex = _mapIndex;
-            var maps = assets.Files.Maps;
-            maps.SanitizeMapIndex(ref mapIndex);
-            assets.EnsureMapLoaded(mapIndex);
-
+            var playerTilePosition = player.WorldPosition;
             int centerX = (int)Math.Floor(playerTilePosition.X);
             int centerY = (int)Math.Floor(playerTilePosition.Y);
 
-            // The player is always drawn at the screen origin (see
-            // PlayerEntity.Draw), so every tile's screen position must be
-            // relative to the player's exact (fractional) iso position, not
-            // just their tile cell, or movement between tiles would snap
-            // instead of scroll smoothly.
-            float playerIsoX = (playerTilePosition.X - playerTilePosition.Y) * TileSize;
-            float playerIsoY = (playerTilePosition.X + playerTilePosition.Y) * TileSize;
+            // Every tile's screen position is relative to the player's exact
+            // (fractional) iso position so movement scrolls smoothly, and the
+            // player's own Z is folded into the Y origin so climbing shifts the
+            // world down (player appears to rise) and vice versa. The "-
+            // TileSize" matches the "- 22" bias GameObject.UpdateRealScreenPosition
+            // applies to EVERY object's real screen position (mobiles
+            // included) - land/static planarX/baseY below apply the same
+            // bias, so it must be applied here too, or the player (missing
+            // it) renders ~22px too high relative to everything else. That
+            // discrepancy was invisible while the player always drew on top
+            // of the world, but became visible once statics/land could
+            // occlude it: front tiles were biting into the player's feet.
+            //
+            // player.Z is used as-is (not eased) so terrain always aligns
+            // exactly with the true surface height - an earlier eased-height
+            // version briefly rendered the ground at the wrong offset while
+            // crossing a height boundary (see PlayerEntity.Z's doc comment).
+            float playerIsoX = (playerTilePosition.X - playerTilePosition.Y) * TileSize - TileSize;
+            float playerIsoY = (playerTilePosition.X + playerTilePosition.Y) * TileSize - (player.Z * 4f) - TileSize;
             var isoOrigin = new Vector2(playerIsoX, playerIsoY);
 
             int x0 = centerX - viewRangeInTiles;
             int x1 = centerX + viewRangeInTiles;
             int y0 = centerY - viewRangeInTiles;
             int y1 = centerY + viewRangeInTiles;
+
+            // The player is drawn when the pass reaches its tile. A mobile
+            // sorts one step above same-Z statics on its tile (Chunk.
+            // AddGameObject: `case Mobile: priorityZ++`), so statics with a
+            // higher priorityZ on that tile - and all statics on tiles closer
+            // to the camera - paint over it.
+            int playerPriorityZ = player.Z + 1;
 
             // Single back-to-front pass, walking diagonals of increasing
             // (tx + ty) - see the class doc comment for why land and statics
@@ -121,21 +106,29 @@ namespace TEF.World
                         continue;
                     }
 
-                    DrawLandTile(batcher, assets, maps, mapIndex, tx, ty, isoOrigin, screenCenterOffset);
+                    DrawLandTile(batcher, map, assets, tx, ty, isoOrigin, screenCenterOffset);
+
+                    bool isPlayerTile = tx == centerX && ty == centerY;
 
                     if (drawStatics)
                     {
-                        DrawStaticsAt(batcher, assets, maps, mapIndex, tx, ty, isoOrigin, screenCenterOffset);
+                        DrawStaticsAt(
+                            batcher, map, assets, tx, ty, isoOrigin, screenCenterOffset,
+                            isPlayerTile ? player : null, playerPriorityZ, screenCenterOffset);
+                    }
+                    else if (isPlayerTile)
+                    {
+                        player.Draw(batcher, assets, screenCenterOffset);
                     }
                 }
             }
         }
 
         private void DrawLandTile(
-            UltimaBatcher2D batcher, GameAssets assets, MapLoader maps, int mapIndex,
+            UltimaBatcher2D batcher, WorldMap map, GameAssets assets,
             int tx, int ty, Vector2 isoOrigin, Vector2 screenCenterOffset)
         {
-            if (!TryGetTile(maps, mapIndex, tx, ty, out ushort tileId, out sbyte z))
+            if (!map.TryGetLand(tx, ty, out ushort tileId, out sbyte z))
             {
                 return;
             }
@@ -150,31 +143,27 @@ namespace TEF.World
 
             float planarX = (tx - ty) * TileSize - TileSize;
 
-            // Rocky/mountain (and other textured) land is drawn from a
-            // TEXMAP stretched to its neighbors' corner heights, not from the
-            // flat land art - the art for these tiles is empty, which is why
-            // they showed as black gaps before. Mirrors Land.ApplyStretch +
-            // LandView.Draw's stretched branch: stretch only when the tile
-            // has a valid texmap AND its neighborhood isn't perfectly flat.
+            // Rocky/mountain (and other textured) land is drawn from a TEXMAP
+            // stretched to its neighbors' corner heights, not from the flat
+            // land art - the art for these tiles is empty, which is why they
+            // showed as black gaps before. Mirrors Land.ApplyStretch +
+            // LandView.Draw's stretched branch: stretch only when the tile has
+            // a valid texmap AND its neighborhood isn't perfectly flat.
             ushort texId = assets.Files.TileData.LandData[tileId].TexID;
 
             if (texId != 0
                 && assets.Files.Texmaps.File.GetValidRefEntry(texId).Length > 0
-                && TryBuildStretch(maps, mapIndex, tx, ty, z,
+                && TryBuildStretch(map, tx, ty, z,
                     out var yOffsets, out var nTop, out var nRight, out var nLeft, out var nBottom))
             {
                 ref readonly var texmap = ref assets.Texmaps.GetTexmap(texId);
                 if (texmap.Texture != null)
                 {
-                    // Planar Y (no Z baked in) - DrawStretchedLand applies
-                    // each corner's own height via yOffsets.
+                    // Planar Y (no Z baked in) - DrawStretchedLand applies each
+                    // corner's own height via yOffsets.
                     float stretchedY = (tx + ty) * TileSize - TileSize;
                     var stretchedPos = new Vector2(planarX, stretchedY) - isoOrigin + screenCenterOffset;
 
-                    // SHADER_LAND is the land shader path that reads the
-                    // per-corner normals (currently flat - no directional
-                    // lighting yet, but the height silhouette from yOffsets
-                    // is correct).
                     var landHue = new Vector3(0f, ShaderHueTranslator.SHADER_LAND, 1f);
 
                     batcher.DrawStretchedLand(
@@ -211,28 +200,44 @@ namespace TEF.World
             );
         }
 
+        /// <summary>
+        /// Draws a tile's statics in priorityZ order, optionally interleaving
+        /// the player at <paramref name="playerPriorityZ"/> when
+        /// <paramref name="player"/> is non-null (i.e. this is the player's
+        /// tile). Statics sorting at or below the player's priority draw first
+        /// (behind it); statics above draw after (in front).
+        /// </summary>
         private void DrawStaticsAt(
-            UltimaBatcher2D batcher, GameAssets assets, MapLoader maps, int mapIndex,
-            int tx, int ty, Vector2 isoOrigin, Vector2 screenCenterOffset)
+            UltimaBatcher2D batcher, WorldMap map, GameAssets assets,
+            int tx, int ty, Vector2 isoOrigin, Vector2 screenCenterOffset,
+            PlayerEntity player, int playerPriorityZ, Vector2 playerScreenCenter)
         {
-            var cells = GetStatics(assets, maps, mapIndex, tx >> 3, ty >> 3);
-            if (cells == null)
-            {
-                return;
-            }
+            var list = map.GetStaticsAt(tx, ty);
 
-            int localPos = ((ty & (BlockSize - 1)) << 3) + (tx & (BlockSize - 1));
-            var list = cells[localPos];
             if (list == null)
             {
+                // No statics here, but the player still needs drawing if this
+                // is its tile.
+                player?.Draw(batcher, assets, playerScreenCenter);
                 return;
             }
 
             float planarX = (tx - ty) * TileSize - TileSize;
             float baseY = (tx + ty) * TileSize - TileSize;
+            bool playerDrawn = false;
 
             foreach (var s in list)
             {
+                // Insert the player just before the first static that sorts
+                // above it. Checked against the full sorted list (before the
+                // CanDrawStatic visibility filter) so the insertion point is
+                // stable regardless of which statics are visible.
+                if (player != null && !playerDrawn && s.PriorityZ > playerPriorityZ)
+                {
+                    player.Draw(batcher, assets, playerScreenCenter);
+                    playerDrawn = true;
+                }
+
                 if (!CanDrawStatic(assets, s.Graphic))
                 {
                     continue;
@@ -244,8 +249,8 @@ namespace TEF.World
                     continue;
                 }
 
-                // Art anchor for statics: bottom-center of the sprite sits
-                // on the tile. See View.DrawStatic.
+                // Art anchor for statics: bottom-center of the sprite sits on
+                // the tile. See View.DrawStatic.
                 int offX = (sprite.UV.Width >> 1) - TileSize;
                 int offY = sprite.UV.Height - (2 * TileSize);
 
@@ -263,6 +268,12 @@ namespace TEF.World
                     0f
                 );
             }
+
+            // Player sorts above every static on the tile.
+            if (player != null && !playerDrawn)
+            {
+                player.Draw(batcher, assets, playerScreenCenter);
+            }
         }
 
         /// <summary>
@@ -272,8 +283,8 @@ namespace TEF.World
         /// ClassicUO.Client's Land.ApplyStretch. Returns false for a locally
         /// flat tile, in which case the caller falls back to flat art.
         /// </summary>
-        private bool TryBuildStretch(
-            MapLoader maps, int mapIndex, int x, int y, sbyte z,
+        private static bool TryBuildStretch(
+            WorldMap map, int x, int y, sbyte z,
             out UltimaBatcher2D.YOffsets yOffsets,
             out Vector3 normalTop, out Vector3 normalRight, out Vector3 normalLeft, out Vector3 normalBottom)
         {
@@ -283,9 +294,9 @@ namespace TEF.World
             // | lef | bot |
             // |_____|_____|
             sbyte zTop = z;
-            sbyte zRight = GetTileZ(maps, mapIndex, x + 1, y);
-            sbyte zLeft = GetTileZ(maps, mapIndex, x, y + 1);
-            sbyte zBottom = GetTileZ(maps, mapIndex, x + 1, y + 1);
+            sbyte zRight = map.GetLandZ(x + 1, y);
+            sbyte zLeft = map.GetLandZ(x, y + 1);
+            sbyte zBottom = map.GetLandZ(x + 1, y + 1);
 
             yOffsets = new UltimaBatcher2D.YOffsets
             {
@@ -304,17 +315,17 @@ namespace TEF.World
             // |_____|_____|_____|_____|
             // |     | t13 | t23 |     |
             // |_____|_____|_____|_____|
-            sbyte t10 = GetTileZ(maps, mapIndex, x, y - 1);
-            sbyte t20 = GetTileZ(maps, mapIndex, x + 1, y - 1);
-            sbyte t01 = GetTileZ(maps, mapIndex, x - 1, y);
+            sbyte t10 = map.GetLandZ(x, y - 1);
+            sbyte t20 = map.GetLandZ(x + 1, y - 1);
+            sbyte t01 = map.GetLandZ(x - 1, y);
             sbyte t21 = zRight;
-            sbyte t31 = GetTileZ(maps, mapIndex, x + 2, y);
-            sbyte t02 = GetTileZ(maps, mapIndex, x - 1, y + 1);
+            sbyte t31 = map.GetLandZ(x + 2, y);
+            sbyte t02 = map.GetLandZ(x - 1, y + 1);
             sbyte t12 = zLeft;
             sbyte t22 = zBottom;
-            sbyte t32 = GetTileZ(maps, mapIndex, x + 2, y + 1);
-            sbyte t13 = GetTileZ(maps, mapIndex, x, y + 2);
-            sbyte t23 = GetTileZ(maps, mapIndex, x + 1, y + 2);
+            sbyte t32 = map.GetLandZ(x + 2, y + 1);
+            sbyte t13 = map.GetLandZ(x, y + 2);
+            sbyte t23 = map.GetLandZ(x + 1, y + 2);
 
             bool stretched = false;
             stretched |= CalculateNormal(z, t10, t21, t12, t01, out normalTop);
@@ -382,59 +393,6 @@ namespace TEF.World
             return true;
         }
 
-        private sbyte GetTileZ(MapLoader maps, int mapIndex, int x, int y)
-        {
-            return TryGetTile(maps, mapIndex, x, y, out _, out sbyte z) ? z : (sbyte)0;
-        }
-
-        private bool TryGetTile(MapLoader maps, int mapIndex, int x, int y, out ushort tileId, out sbyte z)
-        {
-            tileId = 0;
-            z = 0;
-
-            if (x < 0 || y < 0)
-            {
-                return false;
-            }
-
-            var blockOrNull = GetBlock(maps, mapIndex, x >> 3, y >> 3);
-            if (blockOrNull == null)
-            {
-                return false;
-            }
-
-            var block = blockOrNull.Value;
-            int localX = x & (BlockSize - 1);
-            int localY = y & (BlockSize - 1);
-            ref readonly var cell = ref block.Cells[localY * BlockSize + localX];
-
-            tileId = (ushort)(cell.TileID & 0x3FFF);
-            z = cell.Z;
-            return true;
-        }
-
-        private MapBlock? GetBlock(MapLoader maps, int mapIndex, int blockX, int blockY)
-        {
-            long key = ((long)blockX << 32) | (uint)blockY;
-
-            if (_blockCache.TryGetValue(key, out var cached))
-            {
-                return cached;
-            }
-
-            ref var indexMap = ref maps.GetIndex(mapIndex, blockX, blockY);
-            MapBlock? block = null;
-
-            if (indexMap.IsValid())
-            {
-                indexMap.MapFile.Seek((long)indexMap.MapAddress, SeekOrigin.Begin);
-                block = indexMap.MapFile.Read<MapBlock>();
-            }
-
-            _blockCache[key] = block;
-            return block;
-        }
-
         /// <summary>
         /// Whether a static graphic should be rendered at all. Ported from
         /// ClassicUO.Client's GameObject.CanBeDrawn - it filters out the
@@ -486,111 +444,6 @@ namespace TEF.World
             }
 
             return !data.IsNoDiagonal;
-        }
-
-        /// <summary>
-        /// Draw-order priority for a static at a given Z, ported from
-        /// Chunk.AddGameObject's default (plain item/static) case. Raw Z
-        /// alone isn't enough to sort correctly: e.g. a fountain's water
-        /// surface is flagged Background and sits at the same Z as the
-        /// stone rim around it, but must still paint *behind* the rim - it
-        /// needs to sort one step earlier despite the tied Z.
-        /// </summary>
-        private static short ComputePriorityZ(GameAssets assets, ushort graphic, sbyte z)
-        {
-            short priorityZ = z;
-
-            if (graphic < assets.Files.TileData.StaticData.Length)
-            {
-                ref readonly var data = ref assets.Files.TileData.StaticData[graphic];
-
-                if (data.IsBackground)
-                {
-                    priorityZ--;
-                }
-
-                if (data.Height != 0)
-                {
-                    priorityZ++;
-                }
-
-                if (data.IsMultiMovable)
-                {
-                    priorityZ++;
-                }
-            }
-
-            return priorityZ;
-        }
-
-        private List<StaticTile>[] GetStatics(GameAssets assets, MapLoader maps, int mapIndex, int blockX, int blockY)
-        {
-            long key = ((long)blockX << 32) | (uint)blockY;
-
-            if (_staticCache.TryGetValue(key, out var cached))
-            {
-                return cached;
-            }
-
-            List<StaticTile>[] cells = null;
-
-            ref var indexMap = ref maps.GetIndex(mapIndex, blockX, blockY);
-
-            if (indexMap.IsValid() && indexMap.StaticFile != null && indexMap.StaticAddress != 0 && indexMap.StaticCount > 0)
-            {
-                int count = (int)indexMap.StaticCount;
-                var buffer = new StaticsBlock[count];
-
-                indexMap.StaticFile.Seek((long)indexMap.StaticAddress, SeekOrigin.Begin);
-                indexMap.StaticFile.Read(MemoryMarshal.AsBytes(buffer.AsSpan()));
-
-                int readOrder = 0;
-
-                foreach (ref readonly var sb in buffer.AsSpan())
-                {
-                    // 0 / 0xFFFF are "no tile" sentinels - same filter as Chunk.Load.
-                    if (sb.Color == 0 || sb.Color == 0xFFFF)
-                    {
-                        continue;
-                    }
-
-                    if (sb.X >= BlockSize || sb.Y >= BlockSize)
-                    {
-                        continue;
-                    }
-
-                    cells ??= new List<StaticTile>[BlockSize * BlockSize];
-
-                    int pos = (sb.Y << 3) + sb.X;
-                    (cells[pos] ??= new List<StaticTile>()).Add(new StaticTile
-                    {
-                        Graphic = sb.Color,
-                        Hue = sb.Hue,
-                        Z = sb.Z,
-                        PriorityZ = ComputePriorityZ(assets, sb.Color, sb.Z),
-                        ReadOrder = readOrder++,
-                    });
-                }
-
-                if (cells != null)
-                {
-                    foreach (var list in cells)
-                    {
-                        // Stable sort: ties keep file read order, matching
-                        // Chunk.AddGameObject appending same-priority statics
-                        // in insertion order rather than raw-Z order. List<T>.Sort
-                        // is NOT stable, so break ties on ReadOrder explicitly.
-                        list?.Sort(static (a, b) =>
-                        {
-                            int cmp = a.PriorityZ.CompareTo(b.PriorityZ);
-                            return cmp != 0 ? cmp : a.ReadOrder.CompareTo(b.ReadOrder);
-                        });
-                    }
-                }
-            }
-
-            _staticCache[key] = cells;
-            return cells;
         }
     }
 }

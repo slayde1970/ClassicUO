@@ -32,8 +32,11 @@ namespace TEF.Scenes
         // extends well above their tile) don't pop in/out at the border.
         private const int ViewRangeMargin = 8;
 
+        private const int MapIndex = 0;
+
         private readonly PlayerEntity _player = new();
-        private readonly TileRenderer _tiles = new(mapIndex: 0);
+        private readonly TileRenderer _tiles = new();
+        private WorldMap _map;
         private bool _drawStatics = true;
 
         public WorldScene(GameController game) : base(game)
@@ -45,7 +48,8 @@ namespace TEF.Scenes
             base.Load();
 
             Camera.Zoom = 1f;
-            _player.Teleport(SpawnTile);
+            _map = new WorldMap(Game.Assets, MapIndex);
+            _player.Spawn(_map, SpawnTile);
         }
 
         public override void Update(InputManager input)
@@ -54,7 +58,7 @@ namespace TEF.Scenes
 
             Camera.Bounds = Game.GraphicsDevice.Viewport.Bounds;
 
-            _player.Update(input);
+            _player.Update(input, _map);
 
             if (input.ScrollDelta != 0)
             {
@@ -78,7 +82,7 @@ namespace TEF.Scenes
             // coords are integers; WorldPosition is fractional, so floor it.
             int tileX = (int)Math.Floor(_player.WorldPosition.X);
             int tileY = (int)Math.Floor(_player.WorldPosition.Y);
-            Game.Window.Title = $"The Exile's Forge  -  map 0  ({tileX}, {tileY})";
+            Game.Window.Title = $"The Exile's Forge  -  map {MapIndex}  ({tileX}, {tileY}, {_player.Z})";
         }
 
         public override void Draw(UltimaBatcher2D batcher)
@@ -97,8 +101,10 @@ namespace TEF.Scenes
             // centered on the player.
             var screenCenter = new Vector2(Camera.Bounds.Width / 2f, Camera.Bounds.Height / 2f);
 
-            _tiles.Draw(batcher, Game.Assets, _player.WorldPosition, ComputeViewRange(), screenCenter, _drawStatics);
-            _player.Draw(batcher, Game.Assets, screenCenter);
+            // The player is drawn inside the tile pass (interleaved on its own
+            // tile) so statics in front of it can occlude it - see
+            // TileRenderer.Draw.
+            _tiles.Draw(batcher, _map, _player, ComputeViewRange(), screenCenter, _drawStatics);
 
             batcher.End();
         }
