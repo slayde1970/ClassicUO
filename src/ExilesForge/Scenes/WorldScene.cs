@@ -57,6 +57,8 @@ namespace TEF.Scenes
         private PickResult _entityPick;
         private PickResult _tilePick;
 
+        public bool PlayMusicOnStart = true;
+
         public WorldScene(GameController game) : base(game)
         {
             _entityRenderer = new EntityRenderSystem(_entities);
@@ -119,7 +121,7 @@ namespace TEF.Scenes
                 Camera.Zoom += input.ScrollDelta > 0 ? Camera.ZoomStep : -Camera.ZoomStep;
             }
 
-            if (input.IsActionPressed(GameAction.Interact))
+            if (PlayMusicOnStart || input.IsActionPressed(GameAction.Interact))
             {
                 Game.Audio.PlayMusic(8); // "stones2" - the classic-era login theme, ships with every client
             }
