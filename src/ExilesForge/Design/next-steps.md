@@ -7,8 +7,9 @@ dependency-ordered.
 
 Current status (as of this writing): asset loading, rendering, action-mapped
 input, audio, an animated player with 8-way facing, land/static/stretched-
-terrain rendering, and collision + player Z tracking are all working. See
-`World/TileRenderer.cs` for the current known gaps in the renderer itself.
+terrain rendering, collision + player Z tracking, depth-sorted player/statics,
+and a working entity system are all done. See `World/TileRenderer.cs` for the
+current known gaps in the renderer itself.
 
 ## Tier 1 — Core world interaction
 
@@ -29,22 +30,26 @@ everything else builds on.
      chunk-cache item).
 
 2. ~~**Depth sorting: player/entities interleaved with statics**~~ **[DONE]**
-   The player is now drawn inside `TileRenderer`'s back-to-front pass,
-   interleaved on its own tile at `priorityZ = Z + 1` (matching
-   `Chunk.AddGameObject`'s mobile priority) so statics in front of or above it
-   correctly occlude it. Uncovered and fixed two related bugs along the way:
-   (a) the world's iso origin was missing the same "-22" screen-position bias
-   every land/static tile applies (`GameObject.UpdateRealScreenPosition`),
-   causing the player to render offset from everything else and become
-   partly hidden behind unrelated terrain; (b) see Tier 4 item 11 for the
+   The player draws inside `TileRenderer`'s back-to-front pass, interleaved
+   on its own tile at `priorityZ = Z + 1` (matching `Chunk.AddGameObject`'s
+   mobile priority) so statics in front of or above it correctly occlude it.
+   Uncovered and fixed two related bugs along the way: (a) the world's iso
+   origin was missing the same "-22" screen-position bias every land/static
+   tile applies (`GameObject.UpdateRealScreenPosition`), causing the player
+   to render offset from everything else; (b) see Tier 4 item 11 for the
    eased-Z-transition clipping bug this also exposed.
 
-3. **Entity system**
-   A general world-object model beyond the single `PlayerEntity` — NPCs,
-   resource nodes, dropped items, placeables. A simple entity manager
-   (position, graphic, animation state, draw hook) that plugs into the depth
-   sort. Worth designing with serialization in mind (see Tier 3, item 7)
-   since most gameplay features become entities.
+3. ~~**Entity system**~~ **[DONE]** — see `Design/prd-entity-system.md` for
+   the full design. Hand-rolled ID-based entity registry (no third-party ECS
+   library), data-only components (`Transform`, `Appearance`, `Harvestable`,
+   `Interactable` in `World/Entities/`), plain systems (`HarvestSystem`,
+   `EntityRenderSystem`), and a three-way merge into `TileRenderer`'s
+   back-to-front pass (map statics + entities + player) using the same tuple
+   shape as `WorldMap.StaticTile` - no new render interface needed. Verified:
+   a debug `Harvestable` tree renders correctly depth-sorted (player walks
+   behind it) and deplete/respawn (tree -> stump -> tree) works end to end
+   via a left-click debug trigger in `WorldScene`. `PlayerEntity` stays
+   separate from the registry for now, per the PRD's deferred scope.
 
 ## Tier 2 — Interaction & presentation surface
 
@@ -105,11 +110,12 @@ everything else builds on.
 
 ## Recommended order
 
-Tier 1 (1 → 2 → 3) first — they interlock and define the world model. Then
-Tier 2 (4 → 5) for interaction and UI. Then Tier 3 (6/7/8) as gameplay systems
-start needing time, saves, and scale. Tier 4 last.
+Tier 1 (1 → 2 → 3) is now fully done — they interlocked and defined the world
+model. Next up is Tier 2 (4 → 5) for interaction and UI. Then Tier 3 (6/7/8)
+as gameplay systems start needing time, saves, and scale. Tier 4 last.
 
-**Pivot point:** once items 1-4 are done, a real gameplay loop is prototypable
-(walk up to a tree, click it, chop it, get wood) — those four are the critical
-path if the goal is reaching "fun" fastest; 5-8 can come in as the loop
-demands them.
+**Pivot point:** with items 1-3 done, mouse picking (item 4) is the next
+unblock toward a real gameplay loop (walk up to a tree, click it, chop it,
+get wood) - the `Harvestable` debug tree already proves the deplete/respawn
+half of that loop end to end; picking is what's needed to trigger it from a
+real click instead of a debug key.

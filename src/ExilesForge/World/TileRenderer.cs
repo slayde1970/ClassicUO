@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 using System;
+using System.Collections.Generic;
 using ClassicUO.Renderer;
 using Microsoft.Xna.Framework;
 using TEF.Assets;
+using TEF.World.Entities;
 
 namespace TEF.World
 {
@@ -43,12 +45,19 @@ namespace TEF.World
         private const int TileSize = 22; // half-width/height of the 44x44 iso diamond, see GameObject.UpdateRealScreenPosition
         private const int BlockSize = WorldMap.BlockSize;
 
+        // Scratch buffer for the three-way (map statics + entities + player)
+        // merge in DrawStaticsAt - reused across calls to avoid per-tile
+        // allocations. Never mutate map.GetStaticsAt's or entities.GetAt's
+        // own lists directly; both are cached/reused elsewhere.
+        private readonly List<WorldMap.StaticTile> _mergedStatics = new();
+
+        /// <param name="entities">Live world entities (resource nodes, etc.) to interleave into the same pass, in the same tuple shape as map statics. May be null to skip entirely.</param>
         /// <param name="player">The player, drawn interleaved into the back-to-front pass on its own tile so statics on tiles in front of it can occlude it. May be null.</param>
         /// <param name="viewRangeInTiles">How many tiles out from the player to draw in each direction.</param>
         /// <param name="screenCenterOffset">Viewport center - Camera only handles zoom/peek, not centering, so the caller supplies this (see PlayerEntity.Draw for the same convention).</param>
-        /// <param name="drawStatics">When false, skips the statics pass (debug toggle to inspect the bare land layer).</param>
+        /// <param name="drawStatics">When false, skips the statics (and entity) pass (debug toggle to inspect the bare land layer).</param>
         public void Draw(
-            UltimaBatcher2D batcher, WorldMap map, PlayerEntity player,
+            UltimaBatcher2D batcher, WorldMap map, EntityRenderSystem entities, PlayerEntity player,
             int viewRangeInTiles, Vector2 screenCenterOffset, bool drawStatics = true)
         {
             var assets = map.Assets;
@@ -83,6 +92,8 @@ namespace TEF.World
             int y0 = centerY - viewRangeInTiles;
             int y1 = centerY + viewRangeInTiles;
 
+            entities?.Rebuild(x0, y0, x1, y1);
+
             // The player is drawn when the pass reaches its tile. A mobile
             // sorts one step above same-Z statics on its tile (Chunk.
             // AddGameObject: `case Mobile: priorityZ++`), so statics with a
@@ -113,7 +124,7 @@ namespace TEF.World
                     if (drawStatics)
                     {
                         DrawStaticsAt(
-                            batcher, map, assets, tx, ty, isoOrigin, screenCenterOffset,
+                            batcher, map, assets, entities, tx, ty, isoOrigin, screenCenterOffset,
                             isPlayerTile ? player : null, playerPriorityZ, screenCenterOffset);
                     }
                     else if (isPlayerTile)
@@ -201,22 +212,52 @@ namespace TEF.World
         }
 
         /// <summary>
-        /// Draws a tile's statics in priorityZ order, optionally interleaving
-        /// the player at <paramref name="playerPriorityZ"/> when
-        /// <paramref name="player"/> is non-null (i.e. this is the player's
-        /// tile). Statics sorting at or below the player's priority draw first
-        /// (behind it); statics above draw after (in front).
+        /// Draws a tile's statics AND entities in one merged priorityZ order,
+        /// optionally interleaving the player at
+        /// <paramref name="playerPriorityZ"/> when <paramref name="player"/>
+        /// is non-null (i.e. this is the player's tile). Entries sorting at
+        /// or below the player's priority draw first (behind it); entries
+        /// above draw after (in front). See Design/prd-entity-system.md
+        /// section 4.6 for why entities merge into this same tuple shape
+        /// rather than getting their own interface/draw path.
         /// </summary>
         private void DrawStaticsAt(
-            UltimaBatcher2D batcher, WorldMap map, GameAssets assets,
+            UltimaBatcher2D batcher, WorldMap map, GameAssets assets, EntityRenderSystem entities,
             int tx, int ty, Vector2 isoOrigin, Vector2 screenCenterOffset,
             PlayerEntity player, int playerPriorityZ, Vector2 playerScreenCenter)
         {
-            var list = map.GetStaticsAt(tx, ty);
+            var mapStatics = map.GetStaticsAt(tx, ty);
+            var entityStatics = entities?.GetAt(tx, ty);
+
+            List<WorldMap.StaticTile> list;
+
+            if (entityStatics == null || entityStatics.Count == 0)
+            {
+                list = mapStatics;
+            }
+            else if (mapStatics == null || mapStatics.Count == 0)
+            {
+                list = entityStatics;
+            }
+            else
+            {
+                // Both present - merge into scratch storage rather than
+                // mutating either cached list (map's is persistent; the
+                // entity system's is rebuilt but still owned by it).
+                _mergedStatics.Clear();
+                _mergedStatics.AddRange(mapStatics);
+                _mergedStatics.AddRange(entityStatics);
+                _mergedStatics.Sort(static (a, b) =>
+                {
+                    int cmp = a.PriorityZ.CompareTo(b.PriorityZ);
+                    return cmp != 0 ? cmp : a.ReadOrder.CompareTo(b.ReadOrder);
+                });
+                list = _mergedStatics;
+            }
 
             if (list == null)
             {
-                // No statics here, but the player still needs drawing if this
+                // Nothing here, but the player still needs drawing if this
                 // is its tile.
                 player?.Draw(batcher, assets, playerScreenCenter);
                 return;

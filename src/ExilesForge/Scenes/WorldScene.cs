@@ -6,6 +6,7 @@ using Microsoft.Xna.Framework;
 using TEF.Core;
 using TEF.Input;
 using TEF.World;
+using TEF.World.Entities;
 
 namespace TEF.Scenes
 {
@@ -34,13 +35,23 @@ namespace TEF.Scenes
 
         private const int MapIndex = 0;
 
+        // Tree/stump graphics for the debug Harvestable spawned in Load() -
+        // proves out the entity system end to end (Design/prd-entity-system.md
+        // acceptance criteria) ahead of real mouse-picking/interaction.
+        private const ushort DebugTreeGraphic = 0x0CCA;
+        private const ushort DebugStumpGraphic = 0x0E59; // ClassicUO's Constants.TREE_REPLACE_GRAPHIC
+
         private readonly PlayerEntity _player = new();
         private readonly TileRenderer _tiles = new();
+        private readonly EntityWorld _entities = new();
+        private readonly EntityRenderSystem _entityRenderer;
         private WorldMap _map;
         private bool _drawStatics = true;
+        private int _debugTreeEntityId;
 
         public WorldScene(GameController game) : base(game)
         {
+            _entityRenderer = new EntityRenderSystem(_entities);
         }
 
         public override void Load()
@@ -50,6 +61,35 @@ namespace TEF.Scenes
             Camera.Zoom = 1f;
             _map = new WorldMap(Game.Assets, MapIndex);
             _player.Spawn(_map, SpawnTile);
+
+            SpawnDebugTree();
+        }
+
+        private void SpawnDebugTree()
+        {
+            var position = SpawnTile + new Vector2(3f, 0f);
+            int tx = (int)Math.Floor(position.X);
+            int ty = (int)Math.Floor(position.Y);
+            sbyte z = _map.ResolveSpawnZ(tx, ty);
+
+            byte height = Game.Assets.Files.TileData.StaticData[DebugTreeGraphic].Height;
+
+            int id = _entities.CreateEntity();
+            _entities.Transforms[id] = new Transform { WorldPosition = position, Z = z };
+            _entities.Appearances[id] = new Appearance { Graphic = DebugTreeGraphic, Hue = 0, Height = height };
+            _entities.Harvestables[id] = new Harvestable
+            {
+                Resource = ResourceType.Wood,
+                YieldRemaining = 3,
+                YieldMax = 3,
+                AvailableGraphic = DebugTreeGraphic,
+                DepletedGraphic = DebugStumpGraphic,
+                IsDepleted = false,
+                RespawnDuration = 10f,
+            };
+            _entities.Interactables[id] = new Interactable();
+
+            _debugTreeEntityId = id;
         }
 
         public override void Update(InputManager input)
@@ -74,6 +114,17 @@ namespace TEF.Scenes
             {
                 _drawStatics = !_drawStatics;
             }
+
+            // TEMP debug wiring for the entity system PRD's acceptance
+            // criteria (prove deplete/respawn end to end) ahead of real
+            // mouse-picking/interaction (Tier 2). Left click harvests the
+            // debug tree regardless of where the player/cursor actually are.
+            if (input.IsMousePressed(MouseButton.Left))
+            {
+                HarvestSystem.TryHarvest(_entities, _debugTreeEntityId);
+            }
+
+            HarvestSystem.Update(_entities, Time.Delta);
 
             Camera.Update(true, Time.Delta, input.MousePosition);
 
@@ -104,7 +155,7 @@ namespace TEF.Scenes
             // The player is drawn inside the tile pass (interleaved on its own
             // tile) so statics in front of it can occlude it - see
             // TileRenderer.Draw.
-            _tiles.Draw(batcher, _map, _player, ComputeViewRange(), screenCenter, _drawStatics);
+            _tiles.Draw(batcher, _map, _entityRenderer, _player, ComputeViewRange(), screenCenter, _drawStatics);
 
             batcher.End();
         }
