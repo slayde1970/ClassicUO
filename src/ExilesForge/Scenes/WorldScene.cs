@@ -37,6 +37,12 @@ namespace TEF.Scenes
         // extends well above their tile) don't pop in/out at the border.
         private const int ViewRangeMargin = 8;
 
+        // Extra blocks kept beyond the current view range before
+        // WorldMap.EvictFarBlocks lets a block go - hysteresis so a block
+        // just out of sight isn't evicted and immediately re-read the
+        // moment the player nudges back toward it.
+        private const int EvictionMarginBlocks = 4;
+
         private const int MapIndex = 0;
 
         // Tree/stump graphics for the debug Harvestables spawned in Load() -
@@ -329,6 +335,13 @@ namespace TEF.Scenes
             int tileX = (int)Math.Floor(_player.WorldPosition.X);
             int tileY = (int)Math.Floor(_player.WorldPosition.Y);
 
+            // Chunk cache eviction (Tier 3 #8) - keep radius is the current
+            // view range (in blocks) plus a margin, so a block on screen is
+            // never evicted, and one just out of view isn't immediately
+            // re-read the moment the player nudges back toward it.
+            int keepRadiusBlocks = (ComputeViewRange() / WorldMap.BlockSize) + EvictionMarginBlocks;
+            _map.EvictFarBlocks(tileX, tileY, keepRadiusBlocks);
+
             // Report the entity under the cursor when there is one; otherwise
             // fall back to the ground tile it's standing on (or the bare
             // tile, if no entity at all). Both picks stay independently
@@ -377,7 +390,7 @@ namespace TEF.Scenes
 
             // Screen-space HUD/UI - each has its own Begin/End (no camera
             // matrix), drawn after the world so they always sit on top.
-            _hud.Draw(batcher, _tilePick, _entityPick, Game.World);
+            _hud.Draw(batcher, _tilePick, _entityPick, Game.World, _map);
             _ui.Draw(batcher);
         }
 

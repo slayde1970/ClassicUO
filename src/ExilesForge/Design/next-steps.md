@@ -151,6 +151,20 @@ everything else builds on.
    instead of re-reading every frame. A performance foundation, and a
    natural home for mutable world state (placed buildings, harvested nodes).
 
+## Before Tier 4: review map rendering optimizations
+
+**[TODO]** User-requested checkpoint before starting Tier 4 - review
+`WorldMap`/`TileRenderer` for rendering-performance opportunities (not just
+the chunk-cache eviction in item 8 above). Candidates to look at when this
+comes up: whether `EntityRenderSystem.Rebuild` (runs fresh every `Draw`
+call, unconditionally, over the current view range - see
+`Design/prd-entity-system.md` 4.6) is worth caching/dirtying instead now
+that entity counts may grow; whether `TileRenderer`'s per-tile diamond
+back-to-front pass has any redundant work at higher zoom levels/view
+ranges; GPU-side batching (draw call counts) once `UltimaBatcher2D` usage
+patterns are clearer. Not investigated yet - this is a placeholder to
+revisit, not a design already decided.
+
 ## Tier 4 — Polish (defer until Tiers 1-3 are in)
 
 9. **Lighting**

@@ -35,7 +35,7 @@ namespace TEF.UI
         public bool ShowDebugInfo { get; set; } = true;
         public bool ShowFps { get; set; } = true;
 
-        public void Draw(UltimaBatcher2D batcher, in PickResult tilePick, in PickResult entityPick, WorldClock clock)
+        public void Draw(UltimaBatcher2D batcher, in PickResult tilePick, in PickResult entityPick, WorldClock clock, WorldMap map)
         {
             if (!ShowDebugInfo && !ShowFps)
             {
@@ -57,8 +57,9 @@ namespace TEF.UI
                     : $"Entity: {entityPick.Name} ({entityPick.TileX}, {entityPick.TileY})";
 
                 string timeLine = $"Time: Day {clock.Day}  {clock.Hour12:D2}:{clock.Minute:D2} {clock.MeridiemTag}";
+                string cacheLine = $"Blocks cached: {map.CachedBlockCount}";
 
-                block = tileLine + "\n" + entityLine + "\n" + timeLine;
+                block = tileLine + "\n" + entityLine + "\n" + timeLine + "\n" + cacheLine;
             }
 
             // Measure everything up front so the background panel can be

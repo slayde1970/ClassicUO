@@ -16,9 +16,10 @@ namespace TEF.World
     /// queries (TileRenderer) and gameplay queries (walkability, surface Z for
     /// PlayerEntity). Blocks are cached persistently - the map data never
     /// changes, so once read a block is kept, which also means revisited areas
-    /// aren't re-read (a partial down payment on the chunk-cache roadmap item;
-    /// no eviction yet, so a very long roam grows memory unbounded - fine for
-    /// now, revisit when the chunk cache lands).
+    /// aren't re-read. Far-away blocks are evicted (see EvictFarBlocks) so a
+    /// long roam doesn't grow memory unbounded; a block simply gets re-read
+    /// from disk (cheap - a raw seek+read, no parsing beyond struct layout)
+    /// if the player wanders back.
     /// </summary>
     public sealed class WorldMap
     {
@@ -48,6 +49,16 @@ namespace TEF.World
         private readonly Dictionary<long, MapBlock?> _blockCache = new();
         private readonly Dictionary<long, List<StaticTile>[]> _staticCache = new();
 
+        // Cheap early-out for EvictFarBlocks: it only actually walks the
+        // caches when the player's own block changes, so it's effectively
+        // free on the vast majority of frames.
+        private int _lastEvictBlockX = int.MinValue;
+        private int _lastEvictBlockY = int.MinValue;
+
+        // Scratch list reused by EvictFarBlocks so eviction doesn't allocate
+        // every time it runs (dictionaries can't be modified while iterating).
+        private readonly List<long> _evictScratch = new();
+
         // Reused scratch buffer for TryGetStandZ so per-move collision tests
         // don't allocate. (baseZ, topZ, isSurface) per solid object on a tile.
         private readonly List<(int Base, int Top, bool Surface)> _objs = new();
@@ -64,6 +75,9 @@ namespace TEF.World
 
         public GameAssets Assets => _assets;
         public int MapIndex => _mapIndex;
+
+        /// <summary>Number of map blocks currently cached - for debug/verification that EvictFarBlocks keeps this bounded during a long roam, not general-purpose API.</summary>
+        public int CachedBlockCount => _blockCache.Count;
 
         public bool TryGetLand(int x, int y, out ushort tileId, out sbyte z)
         {
@@ -310,6 +324,56 @@ namespace TEF.World
         {
             sbyte landZ = GetLandZ(x, y);
             return TryGetStandZ(x, y, landZ, out sbyte z) ? z : landZ;
+        }
+
+        /// <summary>
+        /// Evicts cached blocks (map + statics) farther than
+        /// <paramref name="keepRadiusBlocks"/> (Chebyshev distance, i.e. a
+        /// square region) from the block containing <paramref name="centerTileX"/>/
+        /// <paramref name="centerTileY"/> - call once per frame with the
+        /// player's current tile position; the caller is expected to pass a
+        /// radius with enough margin over its actual view range that a block
+        /// isn't evicted and immediately re-read on the very next frame
+        /// (hysteresis), e.g. WorldScene.ComputeViewRange() converted to
+        /// blocks plus a buffer.
+        /// </summary>
+        public void EvictFarBlocks(int centerTileX, int centerTileY, int keepRadiusBlocks)
+        {
+            int centerBlockX = centerTileX >> 3;
+            int centerBlockY = centerTileY >> 3;
+
+            if (centerBlockX == _lastEvictBlockX && centerBlockY == _lastEvictBlockY)
+            {
+                return;
+            }
+
+            _lastEvictBlockX = centerBlockX;
+            _lastEvictBlockY = centerBlockY;
+
+            EvictFar(_blockCache, centerBlockX, centerBlockY, keepRadiusBlocks);
+            EvictFar(_staticCache, centerBlockX, centerBlockY, keepRadiusBlocks);
+        }
+
+        private void EvictFar<T>(Dictionary<long, T> cache, int centerBlockX, int centerBlockY, int keepRadiusBlocks)
+        {
+            _evictScratch.Clear();
+
+            foreach (var key in cache.Keys)
+            {
+                int blockX = (int)(key >> 32);
+                int blockY = (int)(uint)key;
+
+                int distance = Math.Max(Math.Abs(blockX - centerBlockX), Math.Abs(blockY - centerBlockY));
+                if (distance > keepRadiusBlocks)
+                {
+                    _evictScratch.Add(key);
+                }
+            }
+
+            foreach (var key in _evictScratch)
+            {
+                cache.Remove(key);
+            }
         }
 
         private MapBlock? GetBlock(int blockX, int blockY)
