@@ -28,6 +28,13 @@ namespace TEF.Core
 
         public string MeridiemTag => Hour < 12 ? "AM" : "PM";
 
+        /// <summary>Restores exact saved state (see Persistence/SaveManager) - no fast-forwarding for time spent closed, per the persistence PRD's explicit non-goal.</summary>
+        public void Restore(uint day, float timeOfDay)
+        {
+            Day = day;
+            TimeOfDay = timeOfDay;
+        }
+
         public void Advance(float fixedDelta)
         {
             TimeOfDay += fixedDelta / DayLengthSeconds;

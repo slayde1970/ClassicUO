@@ -123,10 +123,28 @@ everything else builds on.
    framerate. Verified: the debug HUD's "Time: Day N HH:MM AM/PM" line
    counts up correctly, and chopping a tree still respawns it after ~10s.
 
-7. **Persistence (save/load)**
-   A single-player sandbox needs it, and it's cheaper to design the
-   entity/world model as serializable now than to retrofit later. Even a
-   stub save format early keeps the data model honest.
+7. ~~**Persistence (save/load)**~~ **[DONE]** — see `Design/prd-persistence.md`
+   for the full design. `Persistence/SaveData.cs` (flat DTOs, independent of
+   runtime types) + `Persistence/SaveManager.cs` (JSON via
+   `System.Text.Json`, one save slot at `%AppData%\ExilesForge\save.json`).
+   `WorldScene` gained a `SaveData`-accepting constructor overload,
+   `RestoreFromSave`, and a public `SaveGame()` - saves happen on a 60s
+   autosave timer (render `Delta`) and on clean exit
+   (`GameController.OnExiting`). New `Scenes/TitleScene.cs` (New Game /
+   Continue - Continue only shown if a save exists), built entirely on the
+   Tier 2 control/gump system - its first real use beyond the `WorldScene`
+   demo panel - including a confirm-before-wipe dialog when New Game is
+   clicked with an existing save. `Program.cs` now starts on `TitleScene`.
+   Explicitly deferred (see PRD non-goals): multiple save slots,
+   "while you were away" offline progression (timers freeze on save, resume
+   unchanged on load), and a compact/binary save format (JSON chosen
+   deliberately for now - revisit before the full game project ships).
+   Verified end to end: harvest a tree partway, quit, relaunch, Continue
+   restores the exact player position/tree state/wood count/world clock;
+   autosave updates the file without quitting; New Game's wipe-confirm
+   dialog (Cancel/Yes) both work correctly. Also added a title screen
+   background image (`Content/title-bg.png`, letterboxed "contain" fit) as
+   a follow-up polish request, not part of the original PRD scope.
 
 8. **Chunk cache / streaming**
    Load map/statics blocks once and keep them until the player moves away,

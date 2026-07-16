@@ -57,6 +57,14 @@ namespace TEF.World
             Z = map.ResolveSpawnZ((int)MathF.Floor(tilePosition.X), (int)MathF.Floor(tilePosition.Y));
         }
 
+        /// <summary>Restores exact saved state (see Persistence/SaveManager) - unlike Spawn, does not recompute Z via WorldMap.ResolveSpawnZ since the exact value is already known.</summary>
+        public void RestoreState(Vector2 worldPosition, sbyte z, Direction facing)
+        {
+            WorldPosition = worldPosition;
+            Z = z;
+            Facing = facing;
+        }
+
         /// <param name="moveSpeed">Tiles per second at normal (non-sprint) pace.</param>
         public void Update(InputManager input, WorldMap map, float moveSpeed = 4f)
         {

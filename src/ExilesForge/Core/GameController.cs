@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
+using System;
 using ClassicUO.Renderer;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -85,6 +86,20 @@ namespace TEF.Core
 
             // Caller wires up the first scene (typically a boot/world scene)
             // after construction via `Scenes.ChangeScene(...)`.
+        }
+
+        // Fires once on a clean Game.Exit()/window close, before shutdown -
+        // see external/FNA/src/Game.cs. Saves whatever session is active so
+        // a clean exit never loses progress (a crash/force-kill can still
+        // lose up to one autosave interval - see WorldScene.Update).
+        protected override void OnExiting(object sender, EventArgs args)
+        {
+            if (Scenes.Current is WorldScene worldScene)
+            {
+                worldScene.SaveGame();
+            }
+
+            base.OnExiting(sender, args);
         }
 
         protected override void UnloadContent()

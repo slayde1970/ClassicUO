@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 using System;
+using System.Collections.Generic;
 using ClassicUO.Renderer;
 using Microsoft.Xna.Framework;
 using TEF.Core;
 using TEF.Input;
+using TEF.Persistence;
 using TEF.UI;
 using TEF.UI.Controls;
 using TEF.World;
@@ -73,12 +75,23 @@ namespace TEF.Scenes
         private readonly Label _woodLabel = new() { X = 10, Y = 30 };
         private int _woodCollected;
 
+        // See Design/prd-persistence.md 4.4 - autosave uses render Delta (not
+        // the fixed sim tick) since its timing has no gameplay-determinism
+        // requirement; a simple accumulator is enough.
+        private const float AutosaveIntervalSeconds = 60f;
+        private float _autosaveTimer;
+
         public bool PlayMusicOnStart = true;
         const int DEFAULT_MUSIC = 8;
 
-        public WorldScene(GameController game) : base(game)
+        // Null = fresh session (today's spawn tile + debug trees). Non-null =
+        // restore this exact state instead - see Load()/RestoreFromSave().
+        private readonly SaveData _saveData;
+
+        public WorldScene(GameController game, SaveData saveData = null) : base(game)
         {
             _entityRenderer = new EntityRenderSystem(_entities);
+            _saveData = saveData;
         }
 
         private void BuildResourcePanel()
@@ -105,9 +118,108 @@ namespace TEF.Scenes
 
             Camera.Zoom = 1f;
             _map = new WorldMap(Game.Assets, MapIndex);
-            _player.Spawn(_map, SpawnTile);
 
-            SpawnDebugTrees();
+            if (_saveData != null)
+            {
+                RestoreFromSave(_saveData);
+            }
+            else
+            {
+                _player.Spawn(_map, SpawnTile);
+                SpawnDebugTrees();
+            }
+        }
+
+        private void RestoreFromSave(SaveData data)
+        {
+            _player.RestoreState(new Vector2(data.Player.X, data.Player.Y), data.Player.Z, (Direction)data.Player.Facing);
+            Game.World.Restore(data.Clock.Day, data.Clock.TimeOfDay);
+            _woodCollected = data.WoodCollected;
+
+            foreach (var entity in data.Entities)
+            {
+                int id = _entities.CreateEntity();
+
+                _entities.Transforms[id] = new Transform { WorldPosition = new Vector2(entity.X, entity.Y), Z = entity.Z };
+                _entities.Appearances[id] = new Appearance { Graphic = entity.Graphic, Hue = entity.Hue, Height = entity.Height };
+
+                if (entity.HasHarvestable)
+                {
+                    _entities.Harvestables[id] = new Harvestable
+                    {
+                        Resource = entity.Resource,
+                        YieldRemaining = entity.YieldRemaining,
+                        YieldMax = entity.YieldMax,
+                        AvailableGraphic = entity.AvailableGraphic,
+                        DepletedGraphic = entity.DepletedGraphic,
+                        IsDepleted = entity.IsDepleted,
+                        RespawnCountdown = entity.RespawnCountdown,
+                        RespawnDuration = entity.RespawnDuration,
+                    };
+                }
+
+                if (entity.HasInteractable)
+                {
+                    _entities.Interactables[id] = new Interactable();
+                }
+            }
+        }
+
+        /// <summary>Builds a SaveData snapshot of current runtime state and writes it - called by the autosave timer (Update) and GameController.OnExiting.</summary>
+        public void SaveGame()
+        {
+            var data = new SaveData
+            {
+                MapIndex = MapIndex,
+                Player = new PlayerSaveData
+                {
+                    X = _player.WorldPosition.X,
+                    Y = _player.WorldPosition.Y,
+                    Z = _player.Z,
+                    Facing = (byte)_player.Facing,
+                },
+                Clock = new WorldClockSaveData
+                {
+                    Day = Game.World.Day,
+                    TimeOfDay = Game.World.TimeOfDay,
+                },
+                WoodCollected = _woodCollected,
+                Entities = new List<EntitySaveData>(),
+            };
+
+            foreach (var (id, transform) in _entities.Transforms)
+            {
+                var appearance = _entities.Appearances[id];
+
+                var entityData = new EntitySaveData
+                {
+                    X = transform.WorldPosition.X,
+                    Y = transform.WorldPosition.Y,
+                    Z = transform.Z,
+                    Graphic = appearance.Graphic,
+                    Hue = appearance.Hue,
+                    Height = appearance.Height,
+                };
+
+                if (_entities.Harvestables.TryGetValue(id, out var harvestable))
+                {
+                    entityData.HasHarvestable = true;
+                    entityData.Resource = harvestable.Resource;
+                    entityData.YieldRemaining = harvestable.YieldRemaining;
+                    entityData.YieldMax = harvestable.YieldMax;
+                    entityData.AvailableGraphic = harvestable.AvailableGraphic;
+                    entityData.DepletedGraphic = harvestable.DepletedGraphic;
+                    entityData.IsDepleted = harvestable.IsDepleted;
+                    entityData.RespawnCountdown = harvestable.RespawnCountdown;
+                    entityData.RespawnDuration = harvestable.RespawnDuration;
+                }
+
+                entityData.HasInteractable = _entities.Interactables.ContainsKey(id);
+
+                data.Entities.Add(entityData);
+            }
+
+            SaveManager.Save(data);
         }
 
         private void SpawnDebugTrees()
@@ -200,6 +312,13 @@ namespace TEF.Scenes
                 && HarvestSystem.TryHarvest(_entities, _entityPick.EntityId))
             {
                 _woodCollected++;
+            }
+
+            _autosaveTimer += Time.Delta;
+            if (_autosaveTimer >= AutosaveIntervalSeconds)
+            {
+                _autosaveTimer = 0f;
+                SaveGame();
             }
 
             Camera.Update(true, Time.Delta, input.MousePosition);

@@ -24,7 +24,7 @@ namespace TEF
             };
 
             using var game = new GameController(settings);
-            game.Scenes.ChangeScene(new WorldScene(game));
+            game.Scenes.ChangeScene(new TitleScene(game));
             game.Run();
         }
 
