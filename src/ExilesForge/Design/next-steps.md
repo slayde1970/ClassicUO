@@ -146,10 +146,22 @@ everything else builds on.
    background image (`Content/title-bg.png`, letterboxed "contain" fit) as
    a follow-up polish request, not part of the original PRD scope.
 
-8. **Chunk cache / streaming**
-   Load map/statics blocks once and keep them until the player moves away,
-   instead of re-reading every frame. A performance foundation, and a
-   natural home for mutable world state (placed buildings, harvested nodes).
+8. ~~**Chunk cache / streaming**~~ **[DONE]** — blocks were already cached
+   persistently (map data never changes); this item added *eviction* so a
+   long roam doesn't grow memory unbounded. `WorldMap.EvictFarBlocks(
+   centerTileX, centerTileY, keepRadiusBlocks)` drops cached map + statics
+   blocks farther than a Chebyshev-distance radius from the player, with a
+   cheap early-out that only walks the caches when the player crosses into a
+   new 8x8 block (`_lastEvictBlockX/Y`). Called each frame from
+   `WorldScene.Update` with keepRadius = current view range in blocks + a
+   4-block hysteresis margin (`EvictionMarginBlocks`), so an on-screen block
+   is never evicted and one just out of view isn't immediately re-read.
+   Re-reading an evicted block is cheap (raw seek+read, no parsing beyond
+   struct layout). Added a "Blocks cached: N" debug-HUD line
+   (`WorldMap.CachedBlockCount`) to confirm the count stays bounded during a
+   long roam. Verified. (Mutable world state - placed buildings, harvested
+   map statics - is still deferred; see the harvest-map-static note below
+   and the chunk-mesh redesign in item 12.)
 
 ## Before Tier 4: review map rendering optimizations
 
