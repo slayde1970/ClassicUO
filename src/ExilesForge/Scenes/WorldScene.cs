@@ -96,7 +96,7 @@ namespace TEF.Scenes
 
         public WorldScene(GameController game, SaveData saveData = null) : base(game)
         {
-            _entityRenderer = new EntityRenderSystem(_entities);
+            _entityRenderer = new EntityRenderSystem(_entities, game.Assets);
             _saveData = saveData;
         }
 
@@ -390,7 +390,7 @@ namespace TEF.Scenes
 
             // Screen-space HUD/UI - each has its own Begin/End (no camera
             // matrix), drawn after the world so they always sit on top.
-            _hud.Draw(batcher, _tilePick, _entityPick, Game.World, _map);
+            _hud.Draw(batcher, _tilePick, _entityPick, Game.World, _map, _tiles);
             _ui.Draw(batcher);
         }
 

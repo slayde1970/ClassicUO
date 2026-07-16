@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using TEF.Assets;
 
 namespace TEF.World.Entities
 {
@@ -25,11 +26,13 @@ namespace TEF.World.Entities
     public sealed class EntityRenderSystem
     {
         private readonly EntityWorld _world;
+        private readonly GameAssets _assets;
         private readonly Dictionary<(int X, int Y), List<WorldMap.StaticTile>> _byTile = new();
 
-        public EntityRenderSystem(EntityWorld world)
+        public EntityRenderSystem(EntityWorld world, GameAssets assets)
         {
             _world = world;
+            _assets = assets;
         }
 
         /// <summary>Rebuilds the per-tile lookup for entities within [x0, x1] x [y0, y1] (inclusive). Call once per frame before any GetAt calls.</summary>
@@ -62,6 +65,11 @@ namespace TEF.World.Entities
                     PriorityZ = (short)(transform.Z + (appearance.Height != 0 ? 1 : 0)),
                     ReadOrder = id, // stable tiebreaker, mirrors GetBlockStatics' read-order tiebreak
                     EntityId = id,  // marks this entry as entity-sourced for mouse-picking
+                    // Entities are never subject to WorldMap's "nodraw
+                    // placeholder" filter (that's a map-data-only heuristic -
+                    // see WorldMap.CanDrawStatic), so always drawable.
+                    Drawable = true,
+                    HueVector = WorldMap.ComputeHueVector(_assets, appearance.Graphic, appearance.Hue),
                 };
 
                 var key = (tx, ty);

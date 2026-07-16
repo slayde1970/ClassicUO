@@ -153,17 +153,42 @@ everything else builds on.
 
 ## Before Tier 4: review map rendering optimizations
 
-**[TODO]** User-requested checkpoint before starting Tier 4 - review
-`WorldMap`/`TileRenderer` for rendering-performance opportunities (not just
-the chunk-cache eviction in item 8 above). Candidates to look at when this
-comes up: whether `EntityRenderSystem.Rebuild` (runs fresh every `Draw`
-call, unconditionally, over the current view range - see
-`Design/prd-entity-system.md` 4.6) is worth caching/dirtying instead now
-that entity counts may grow; whether `TileRenderer`'s per-tile diamond
-back-to-front pass has any redundant work at higher zoom levels/view
-ranges; GPU-side batching (draw call counts) once `UltimaBatcher2D` usage
-patterns are clearer. Not investigated yet - this is a placeholder to
-revisit, not a design already decided.
+**[PARTIALLY DONE - cheap wins landed; full redesign deferred to a later tier.]**
+
+Investigated after the user reported a dense town plaza (fountains/statues/
+walls) rendering at ~80 FPS in TEF vs ~249 FPS in the real ClassicUO.Client
+on the identical map area/zoom/window - a ~3x gap on identical content, so
+not just "dense = inherently slow." Instrumented `TileRenderer` with
+per-frame draw-call counters (surfaced on the debug HUD, F8: "Draws:
+land=N static=N"): the slow plaza was ~5,754 land + ~13,263 static
+`batcher.Draw` calls per frame.
+
+Compared against ClassicUO.Client's render path (`GameScene`/`Chunk`/
+`ChunkMesh`/`GameSceneDrawingSorting`). Root causes of the gap, ranked:
+1. **Biggest: no per-frame draw call per static.** The real client bakes
+   each chunk's land+statics into a persistent GPU vertex buffer once
+   (`ChunkMesh`, dirty-tracked) and a static frame just flips a
+   visibility/hue flag on existing GPU data - it does NOT re-issue geometry
+   per static per frame. TEF re-submits all ~13k statics every frame. This
+   is the real fix and a substantial architectural project (persistent
+   per-chunk vertex buffers, dirty tracking, mesh rebuild-on-change) -
+   **deferred to its own later tier / PRD**, not done now.
+2. Draw-ability filter (`CanDrawStatic`) and hue vector (`IsPartialHue` +
+   `GetHueVector`) were recomputed per static per frame; the real client
+   caches equivalents once at load (`Static.AllowedToDraw`).
+3. Tighter per-object screen-pixel culling in the real client
+   (`GetViewPort`/`AddTileToRenderList`) vs TEF's tile-diamond-range only.
+
+**Landed this phase (cheap wins #2):** baked `Drawable` (was
+`CanDrawStatic`) and `HueVector` (was per-frame `IsPartialHue` +
+`ShaderHueTranslator.GetHueVector`) onto `WorldMap.StaticTile`, computed
+once at block-load time (`GetBlockStatics`) for map statics and once per
+`EntityRenderSystem.Rebuild` entry for entities, instead of every frame in
+`TileRenderer`. `CanDrawStatic` moved from `TileRenderer` to `WorldMap`.
+Result: the worst-case plaza went ~80 → ~99 FPS (~24%), confirming the
+remaining cost is item 1 (the per-frame draw calls themselves). User called
+this good enough for now; the chunk-mesh redesign (item 1) and item 3
+(per-object pixel culling) are deferred to a later tier.
 
 ## Tier 4 — Polish (defer until Tiers 1-3 are in)
 
@@ -192,6 +217,23 @@ revisit, not a design already decided.
     player SPRITE draw (a bob that doesn't feed into where the world/terrain
     is positioned), not a shared "world height" value - the two must never be
     allowed to disagree on where the ground actually is.
+
+12. **GPU-resident chunk-mesh render redesign (deferred perf item)**
+    The big rendering-perf fix identified in the "Before Tier 4" review
+    above: TEF currently issues one `batcher.Draw` per static per frame
+    (~13k in a dense town plaza), where ClassicUO.Client bakes each chunk's
+    land+statics into persistent GPU vertex buffers once (`ChunkMesh`,
+    dirty-tracked) and a static frame just flips visibility/hue flags. This
+    is the ~3x FPS gap on identical content. Substantial enough to warrant
+    its own PRD when picked up (persistent per-chunk vertex/index buffers,
+    an `IsDirty` invalidation model tied to statics being added/removed - or
+    to entity-suppression overlays if the harvest-map-static mechanic lands
+    first, since that mutates a chunk's static set - and texture-bucketed
+    batched draws). Reference: `ChunkMesh.cs`, `GameScene.FillGameObjectList`,
+    `GameSceneDrawingSorting.AddTileToRenderList`. The cheap CPU-side wins
+    (baked `Drawable`/`HueVector`) are already done; this is the remaining
+    GPU-batching half. Also fold in tighter per-object screen-pixel culling
+    (real client's `GetViewPort`/`_minPixel`/`_maxPixel`) at the same time.
 
 ## Deferred gameplay-design notes (game-dev phase, not engine phase)
 

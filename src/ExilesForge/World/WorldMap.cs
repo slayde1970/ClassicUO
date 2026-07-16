@@ -5,6 +5,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using ClassicUO.Assets;
+using ClassicUO.Renderer;
+using Microsoft.Xna.Framework;
 using TEF.Assets;
 
 namespace TEF.World
@@ -36,6 +38,15 @@ namespace TEF.World
             // shared render/merge path stay identical while mouse-picking can
             // still tell "clicked an entity" from "clicked a map static".
             public int EntityId;
+
+            // Baked in once (at block-load time for map statics; at
+            // construction for entity-projected tiles) instead of recomputed
+            // every frame in TileRenderer - see CanDrawStatic/ComputeHueVector.
+            // Real per-frame cost measured at ~13k static draws/frame in a
+            // dense area; re-deriving these per static per frame was pure
+            // waste since neither ever changes for a given map static.
+            public bool Drawable;
+            public Vector3 HueVector;
         }
 
         public const int BlockSize = 8;
@@ -157,6 +168,8 @@ namespace TEF.World
                         Z = sb.Z,
                         PriorityZ = ComputePriorityZ(_assets, sb.Color, sb.Z),
                         ReadOrder = readOrder++,
+                        Drawable = CanDrawStatic(_assets, sb.Color),
+                        HueVector = ComputeHueVector(_assets, sb.Color, sb.Hue),
                     });
                 }
 
@@ -431,6 +444,76 @@ namespace TEF.World
             }
 
             return priorityZ;
+        }
+
+        /// <summary>
+        /// Hue vector for a static/entity graphic+hue, baked in once (see
+        /// StaticTile.HueVector) instead of recomputed by TileRenderer every
+        /// frame for every static in view.
+        /// </summary>
+        public static Vector3 ComputeHueVector(GameAssets assets, ushort graphic, ushort hue)
+        {
+            var staticData = assets.Files.TileData.StaticData;
+            bool partialHue = graphic < staticData.Length && staticData[graphic].IsPartialHue;
+
+            return ShaderHueTranslator.GetHueVector(hue, partialHue, 1f);
+        }
+
+        /// <summary>
+        /// Whether a static graphic should be rendered at all. Ported from
+        /// ClassicUO.Client's GameObject.CanBeDrawn - it filters out the
+        /// "nodraw" placeholder statics (detected mainly by their tiledata
+        /// name starting with "nodraw", plus a handful of hardcoded graphic
+        /// ids and the NoDiagonal flag) that the map data uses as spacers.
+        /// Client-only special cases (gargoyle race, pre-6.0.14.4 easel) are
+        /// dropped since TEF has no player-race or legacy-version handling.
+        /// Baked into StaticTile.Drawable once here (at block-load time)
+        /// rather than recomputed by TileRenderer every frame - this filter
+        /// only ever depends on the graphic id, which never changes for a
+        /// given map static.
+        /// </summary>
+        private static bool CanDrawStatic(GameAssets assets, ushort graphic)
+        {
+            var staticData = assets.Files.TileData.StaticData;
+
+            switch (graphic)
+            {
+                case 0x0001:
+                case 0x21BC:
+                case 0xA1FE:
+                case 0xA1FF:
+                case 0xA200:
+                case 0xA201:
+                    return false;
+
+                case 0x9E4C:
+                case 0x9E64:
+                case 0x9E65:
+                case 0x9E7D:
+                {
+                    ref readonly var d = ref staticData[graphic];
+                    return !d.IsBackground && !d.IsSurface;
+                }
+            }
+
+            if (graphic == 0x63D3 || (graphic >= 0x2198 && graphic <= 0x21A4))
+            {
+                return false;
+            }
+
+            if (graphic >= staticData.Length)
+            {
+                return false;
+            }
+
+            ref readonly var data = ref staticData[graphic];
+
+            if (!string.IsNullOrEmpty(data.Name) && data.Name.StartsWith("nodraw", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return !data.IsNoDiagonal;
         }
     }
 }

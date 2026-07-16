@@ -65,6 +65,12 @@ namespace TEF.World
         private PickResult _staticPick;
         private PickResult _landPick;
 
+        // Draw-call counters for the just-completed Draw() pass - debug/
+        // perf-investigation only (see DebugHud), not used by any gameplay
+        // logic. Reset at the top of every Draw call.
+        public int LandDrawCalls { get; private set; }
+        public int StaticDrawCalls { get; private set; }
+
         /// <param name="entities">Live world entities (resource nodes, etc.) to interleave into the same pass, in the same tuple shape as map statics. May be null to skip entirely.</param>
         /// <param name="player">The player, drawn interleaved into the back-to-front pass on its own tile so statics on tiles in front of it can occlude it. May be null.</param>
         /// <param name="viewRangeInTiles">How many tiles out from the player to draw in each direction.</param>
@@ -84,6 +90,8 @@ namespace TEF.World
             _entityPick = default;
             _staticPick = default;
             _landPick = default;
+            LandDrawCalls = 0;
+            StaticDrawCalls = 0;
 
             var playerTilePosition = player.WorldPosition;
             int centerX = (int)Math.Floor(playerTilePosition.X);
@@ -214,6 +222,7 @@ namespace TEF.World
                         landHue,
                         0f
                     );
+                    LandDrawCalls++;
 
                     // Diamond hit test at the un-stretched position - an
                     // approximation for stretched tiles (their corners are
@@ -240,6 +249,7 @@ namespace TEF.World
                 ShaderHueTranslator.GetHueVector(0),
                 0f
             );
+            LandDrawCalls++;
 
             TestLandPick(assets, screenPos, tx, ty, tileId);
         }
@@ -348,13 +358,11 @@ namespace TEF.World
                     playerDrawn = true;
                 }
 
-                // CanDrawStatic exists to filter out "nodraw" placeholder
-                // spacer statics baked into the raw MAP DATA - it has no
-                // business rejecting a deliberately-placed entity (e.g. a
-                // NoDiagonal-flagged tree graphic, which many large scenery
-                // statics legitimately are), so it only runs for map-sourced
-                // entries.
-                if (s.EntityId == 0 && !CanDrawStatic(assets, s.Graphic))
+                // s.Drawable is baked in once at block-load time (map
+                // statics) or construction time (entity-projected tiles) -
+                // see WorldMap.StaticTile.Drawable / CanDrawStatic - rather
+                // than recomputed here every frame for every static in view.
+                if (!s.Drawable)
                 {
                     continue;
                 }
@@ -374,15 +382,14 @@ namespace TEF.World
                 float drawY = baseY - (s.Z << 2) - offY;
                 var screenPos = new Vector2(drawX, drawY) - isoOrigin + screenCenterOffset;
 
-                bool partialHue = assets.Files.TileData.StaticData[s.Graphic].IsPartialHue;
-
                 batcher.Draw(
                     sprite.Texture,
                     screenPos,
                     sprite.UV,
-                    ShaderHueTranslator.GetHueVector(s.Hue, partialHue, 1f),
+                    s.HueVector,
                     0f
                 );
+                StaticDrawCalls++;
 
                 TestStaticPick(assets, s, screenPos, sprite.UV.Width, sprite.UV.Height, tx, ty);
             }
@@ -582,59 +589,6 @@ namespace TEF.World
             Vector3.Normalize(ref ret, out normal);
 
             return true;
-        }
-
-        /// <summary>
-        /// Whether a static graphic should be rendered at all. Ported from
-        /// ClassicUO.Client's GameObject.CanBeDrawn - it filters out the
-        /// "nodraw" placeholder statics (detected mainly by their tiledata
-        /// name starting with "nodraw", plus a handful of hardcoded graphic
-        /// ids and the NoDiagonal flag) that the map data uses as spacers.
-        /// Client-only special cases (gargoyle race, pre-6.0.14.4 easel) are
-        /// dropped since TEF has no player-race or legacy-version handling.
-        /// </summary>
-        private static bool CanDrawStatic(GameAssets assets, ushort graphic)
-        {
-            var staticData = assets.Files.TileData.StaticData;
-
-            switch (graphic)
-            {
-                case 0x0001:
-                case 0x21BC:
-                case 0xA1FE:
-                case 0xA1FF:
-                case 0xA200:
-                case 0xA201:
-                    return false;
-
-                case 0x9E4C:
-                case 0x9E64:
-                case 0x9E65:
-                case 0x9E7D:
-                {
-                    ref readonly var d = ref staticData[graphic];
-                    return !d.IsBackground && !d.IsSurface;
-                }
-            }
-
-            if (graphic == 0x63D3 || (graphic >= 0x2198 && graphic <= 0x21A4))
-            {
-                return false;
-            }
-
-            if (graphic >= staticData.Length)
-            {
-                return false;
-            }
-
-            ref readonly var data = ref staticData[graphic];
-
-            if (!string.IsNullOrEmpty(data.Name) && data.Name.StartsWith("nodraw", StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-
-            return !data.IsNoDiagonal;
         }
     }
 }
