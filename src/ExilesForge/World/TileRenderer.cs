@@ -70,6 +70,7 @@ namespace TEF.World
         // logic. Reset at the top of every Draw call.
         public int LandDrawCalls { get; private set; }
         public int StaticDrawCalls { get; private set; }
+        public int StretchedLandDrawCalls { get; private set; }
 
         /// <param name="entities">Live world entities (resource nodes, etc.) to interleave into the same pass, in the same tuple shape as map statics. May be null to skip entirely.</param>
         /// <param name="player">The player, drawn interleaved into the back-to-front pass on its own tile so statics on tiles in front of it can occlude it. May be null.</param>
@@ -94,6 +95,7 @@ namespace TEF.World
             _landPick = default;
             LandDrawCalls = 0;
             StaticDrawCalls = 0;
+            StretchedLandDrawCalls = 0;
 
             var playerTilePosition = player.WorldPosition;
             int centerX = (int)Math.Floor(playerTilePosition.X);
@@ -225,6 +227,7 @@ namespace TEF.World
                         0f
                     );
                     LandDrawCalls++;
+                    StretchedLandDrawCalls++;
 
                     // Diamond hit test at the un-stretched position - an
                     // approximation for stretched tiles (their corners are

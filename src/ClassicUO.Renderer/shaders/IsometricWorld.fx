@@ -24,6 +24,15 @@ float2 Viewport;
 float Brightlight;
 float CircleOfTransparencyRadius;
 
+// Extra multiplier on get_light()'s deviation from its flat-tile neutral
+// point (0.85355339), on top of Brightlight - lets a caller exaggerate
+// slope shading beyond the stock 1:1 dot-product response. Defaults to 0
+// (an unset float parameter reads as 0 in this effect, same as
+// Brightlight), which makes the multiplier (1 + 0) = 1, i.e. an exact
+// no-op - existing callers that never set this parameter render bit-for-bit
+// identical to before this was added.
+float LightContrastBoost;
+
 sampler DrawSampler : register(s0);
 sampler HueSampler0 : register(s1);
 sampler HueSampler1 : register(s2);
@@ -65,7 +74,11 @@ float get_light(float3 norm)
 
 	// At 45 degrees (the angle the flat tiles are lit at) it must come out
 	// to (cos(45) / 2) + 0.5 or 0.85355339...
-	return base + ((Brightlight * (base - 0.85355339f)) - (base - 0.85355339f));
+	float shaded = base + ((Brightlight * (base - 0.85355339f)) - (base - 0.85355339f));
+
+	// See LightContrastBoost's declaration - (1 + 0) = 1 when unset, so this
+	// is a no-op unless a caller explicitly opts in.
+	return 0.85355339f + (shaded - 0.85355339f) * (1.0f + LightContrastBoost);
 }
 
 float3 get_colored_light(float shader, float gray)

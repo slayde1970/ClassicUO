@@ -27,5 +27,7 @@ namespace TEF.Input
         ToggleMapStatics, // debug: show/hide MAP statics only - entities always draw regardless
         ToggleDebugInfo, // debug: show/hide the tile/entity-under-cursor HUD text
         ToggleFpsCounter, // debug: show/hide the FPS counter
+        ToggleTerrainLighting, // debug: toggle stretched-land directional shading on/off (Brightlight) for comparison
+        DebugAdvanceTime, // debug: jump the world clock forward 1 in-game hour, to check day/night without waiting
     }
 }

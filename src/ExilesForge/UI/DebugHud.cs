@@ -58,7 +58,7 @@ namespace TEF.UI
 
                 string timeLine = $"Time: Day {clock.Day}  {clock.Hour12:D2}:{clock.Minute:D2} {clock.MeridiemTag}";
                 string cacheLine = $"Blocks cached: {map.CachedBlockCount}";
-                string drawLine = $"Draws: land={tiles.LandDrawCalls} static={tiles.StaticDrawCalls}";
+                string drawLine = $"Draws: land={tiles.LandDrawCalls} static={tiles.StaticDrawCalls} stretched={tiles.StretchedLandDrawCalls}";
 
                 block = tileLine + "\n" + entityLine + "\n" + timeLine + "\n" + cacheLine + "\n" + drawLine;
             }

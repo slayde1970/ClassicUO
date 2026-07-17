@@ -24,7 +24,7 @@ everything else builds on.
    Surface/Impassable statics, with wall-sliding on blocked diagonals.
    `WorldMap.TryGetStandZ` is the walkability check. Height changes snap
    instantly (an eased visual transition was tried and reverted — see Tier 4
-   item 12).
+   item 13).
    - Remaining polish (deferred, "good enough for now"): a few minor collision
      edge cases; `MaxStepUp` climb allowance is a tunable constant that could
      be refined.
@@ -36,7 +36,7 @@ everything else builds on.
    Uncovered and fixed two related bugs along the way: (a) the world's iso
    origin was missing the same "-22" screen-position bias every land/static
    tile applies (`GameObject.UpdateRealScreenPosition`), causing the player
-   to render offset from everything else; (b) see Tier 4 item 12 for the
+   to render offset from everything else; (b) see Tier 4 item 13 for the
    eased-Z-transition clipping bug this also exposed.
 
 3. ~~**Entity system**~~ **[DONE]** — see `Design/prd-entity-system.md` for
@@ -160,7 +160,7 @@ everything else builds on.
    (`WorldMap.CachedBlockCount`) to confirm the count stays bounded during a
    long roam. Verified. (Mutable world state - placed buildings, harvested
    map statics - is still deferred; see the harvest-map-static note below
-   and the chunk-mesh redesign in item 13.)
+   and the chunk-mesh redesign in item 14.)
 
 9. ~~**Animated statics**~~ **[DONE]** — `World/AnimatedStatics.cs`,
    mirroring `ClassicUO.Client`'s `AnimatedStaticsManager` (a **global,
@@ -228,17 +228,106 @@ this good enough for now; the chunk-mesh redesign (item 1) and item 3
 
 ## Tier 4 — Polish (defer until Tiers 1-3 are in)
 
-10. **Lighting**
-    Directional shading via the per-corner normals already computed in
-    `TileRenderer` for stretched land, plus light sources (flames/braziers)
-    and day/night.
+10. **Lighting** — **[IN PROGRESS]** directional slope shading **[DONE]**,
+    day/night ambient darkening **[DONE]**; point lights (flames/braziers)
+    still **[TODO]**, deferred by explicit user choice (see below).
 
-11. **App-shell completeness**
+    Directional shading turned out to be a near-zero-cost fix, not new work:
+    traced the actual shader (`ClassicUO.Renderer/shaders/IsometricWorld.fx`)
+    and found TEF already computes and uploads correct per-corner normals via
+    `TileRenderer`'s `TryBuildStretch`/`CalculateNormal` -> `batcher.
+    DrawStretchedLand` (confirmed in `Batcher2D.cs`, `vertex.Normal0-3` set
+    from the real values) - but the shader's `get_light()` collapses to a
+    flat constant when its `Brightlight` uniform is 0 (the default, since
+    TEF never called `SetBrightlight`), silently discarding the already-
+    correct normals. Fixed with one call: `WorldScene.Draw` now calls
+    `batcher.SetBrightlight(TerrainShadowIntensity)` (const `1f`, matching
+    the real client's max "terrain shadows" setting) right after
+    `batcher.Begin(...)`, mirroring `GameScene.cs`'s own call site.
+
+    Stock effect at max Brightlight was too subtle to see clearly, so added
+    a new **`LightContrastBoost`** shader uniform to `IsometricWorld.fx`
+    (shared with `ClassicUO.Client`) that exaggerates `get_light()`'s
+    deviation from its neutral point - designed to default to `0` (an unset
+    float parameter reads as 0 in this effect) which is an exact no-op,
+    so `ClassicUO.Client`'s rendering is bit-for-bit unaffected unless it
+    explicitly opts in (it doesn't). Recompiled via `fxc.exe` (`compile_
+    shaders.bat`, needs the Windows SDK's `fxc.exe`) into `IsometricWorld.
+    fxc`; added `BasicUOEffect.LightContrastBoost` and `Batcher2D.
+    SetLightContrastBoost(float)` mirroring the existing `Brightlight`
+    plumbing. Verified `ClassicUO.Client` still builds cleanly after the
+    shared-shader change. TEF sets this via a tunable `WorldScene` constant,
+    `TerrainLightContrastBoost` - tried `2f` (too strong), `0.6f` (better),
+    settled on **`0.3f`** by user's own hand-tuning. `Ctrl+L`
+    (`GameAction.ToggleTerrainLighting`) toggles both Brightlight and the
+    contrast boost off/on together for A/B comparison - this also required
+    adding modifier-key support to `InputManager` (a new `KeyBinding` struct
+    with an optional `Modifier`, implicitly convertible from a bare `Keys`
+    so every existing single-key binding needed no changes).
+
+    **Day/night ambient darkening: DONE, verified.** New `World/
+    DayNightOverlay.cs` - a separate `RenderTarget2D` cleared each frame to
+    a brightness derived from `WorldClock.TimeOfDay` (full brightness at
+    noon, a `0.30` floor at midnight so night is dim, not pitch black;
+    smooth cosine curve in between via `ComputeBrightness`), composited
+    over the finished world scene via a manually-constructed multiply
+    `BlendState` (XNA/FNA has no built-in `BlendState.Multiply`) - chosen
+    over a flat screen-space tint specifically because it's the only
+    approach that can properly combine with point lights later (a light
+    source additively drawn into the SAME target before compositing would
+    naturally punch a hole in the darkness), matching `ClassicUO.Client`'s
+    `GameScene.PrepareLightsRendering`/`LightRenderTarget` approach.
+
+    **Real bug hit and fixed:** the first version called `SetRenderTarget`
+    to prepare the darkness texture AFTER the world had already been drawn
+    to the backbuffer that frame - switching the active render target away
+    and back silently discarded the backbuffer's existing contents (default
+    `RenderTargetUsage.DiscardContents`), so only the darkness overlay was
+    visible, not the blended scene. Fixed by splitting `DayNightOverlay`
+    into `Prepare(...)` (called from `WorldScene.Draw` BEFORE the world
+    pass, when the backbuffer is still empty/just-cleared, so there's
+    nothing to lose) and `Composite(...)` (called AFTER the world pass -
+    just a texture-sample draw, no more render-target switching). Worth
+    remembering for any future render-target work: never switch away from
+    the backbuffer after something's already been drawn to it this frame
+    unless `RenderTargetUsage.PreserveContents` is explicitly set.
+
+    Added a debug key, **F10** (`GameAction.DebugAdvanceTime`), to jump the
+    world clock forward 1 in-game hour per press (`Game.World.Advance(
+    Game.World.DayLengthSeconds / 24f)`) - needed to verify day/night
+    without waiting through a real ~24-minute in-game day. Verified: pressing
+    F10 repeatedly cycles the scene through visibly darker/brighter, properly
+    blended with the world underneath (not replacing it).
+
+    **Point lights (flames/braziers): explicitly deferred, not started.**
+    User's call: ship ambient day/night alone this pass rather than bundle
+    in point-light registration/rendering, since which statics/entities
+    emit light (and at what radius/color) is its own open design question
+    with no data model yet - not just a rendering one. `DayNightOverlay`'s
+    render-target architecture is specifically shaped so point lights can
+    be added later (additively drawn into the same target during `Prepare`,
+    before the darkness clear's result is composited) without a rewrite.
+
+11. **Day/night lighting polish (revisit `DayNightOverlay` - color, not just brightness)**
+    Currently `DayNightOverlay.ComputeBrightness` only darkens/brightens a
+    neutral gray (`new Color(brightness, brightness, brightness, 1f)`) - no
+    color tint at all. Revisit later to add: a warm orange/pink tint around
+    sunrise/sunset (blend toward e.g. a warm color near `TimeOfDay` ~0.25/
+    ~0.75, fading back to neutral gray by mid-day/mid-night), and a cool
+    blue moonlight tint at night instead of a flat gray floor (replace the
+    plain `MinBrightness` gray with a dim blue-tinted color at midnight).
+    Both are pure tuning/color-curve work on top of the existing render-
+    target architecture - no new rendering mechanism needed, just a richer
+    `ComputeBrightness`-equivalent that returns a `Color` (hue + brightness)
+    instead of a single scalar. Natural to revisit alongside point lights
+    (item 10's remaining half), since both touch the same overlay.
+
+12. **App-shell completeness**
     A config file instead of the hardcoded `--uopath`/`--clientversion`
     defaults in `Program.cs`; character-spawn scenes instead of a fixed
     spawn tile. (Animated statics moved to Tier 3 item 9.)
 
-12. **Smooth Z transitions (revisit in a final polish pass)**
+13. **Smooth Z transitions (revisit in a final polish pass)**
     Player height changes currently snap instantly (see `PlayerEntity.Z`'s doc
     comment) rather than easing, on purpose: a first attempt eased a separate
     `RenderZ` toward the logical `Z` and used it for the world's vertical draw
@@ -254,7 +343,7 @@ this good enough for now; the chunk-mesh redesign (item 1) and item 3
     is positioned), not a shared "world height" value - the two must never be
     allowed to disagree on where the ground actually is.
 
-13. **GPU-resident chunk-mesh render redesign (deferred perf item)**
+14. **GPU-resident chunk-mesh render redesign (deferred perf item)**
     The big rendering-perf fix identified in the "Before Tier 4" review
     above: TEF currently issues one `batcher.Draw` per static per frame
     (~13k in a dense town plaza), where ClassicUO.Client bakes each chunk's
@@ -317,8 +406,10 @@ generally rather than special-casing trees specifically when the time comes.
 
 ## Recommended order
 
-Tier 1 and all of Tier 2 (mouse picking, UI/HUD + control system) are now
-fully done. The "walk up to a tree, click it, chop it, get wood" loop is
-real end to end, with a real UI counter surfacing it (the "Resources" panel)
-instead of just title-bar text. Next up is Tier 3 (6/7/8) as gameplay
-systems start needing time, saves, and scale. Tier 4 last.
+Tier 1, Tier 2, and all of Tier 3 (game clock, persistence + title screen,
+chunk-cache eviction, animated statics) are now fully done. The "walk up to
+a tree, click it, chop it, get wood" loop is real end to end, with a real
+UI counter surfacing it (the "Resources" panel), a saved/resumable session,
+and a bounded-memory world cache. Next up is Tier 4 (lighting, app-shell
+completeness, smooth Z transitions, and the deferred chunk-mesh GPU
+redesign).

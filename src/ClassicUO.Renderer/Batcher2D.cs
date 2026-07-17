@@ -121,6 +121,12 @@ namespace ClassicUO.Renderer
             _basicUOEffect.Brighlight.SetValue(f);
         }
 
+        /// <summary>Extra multiplier on top of Brightlight's terrain slope-shading effect - 0 (default, matches an unset shader float) is a no-op; see IsometricWorld.fx's LightContrastBoost.</summary>
+        public void SetLightContrastBoost(float f)
+        {
+            _basicUOEffect.LightContrastBoost.SetValue(f);
+        }
+
         public void SetCircleOfTransparencyRadius(float radius)
         {
             _basicUOEffect.CircleOfTransparencyRadius.SetValue(radius);

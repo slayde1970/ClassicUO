@@ -43,6 +43,18 @@ namespace TEF.Scenes
         // moment the player nudges back toward it.
         private const int EvictionMarginBlocks = 4;
 
+        // See the SetBrightlight call in Draw() - 0f..1f, how strongly
+        // stretched land's per-corner normals bump-shade sloped terrain.
+        private const float TerrainShadowIntensity = 1f;
+
+        // Extra multiplier on top of TerrainShadowIntensity's effect (see
+        // IsometricWorld.fx's LightContrastBoost) - the stock shader's
+        // slope-shading is subtle even at max Brightlight, so this
+        // exaggerates the contrast further. 0 = stock ClassicUO look;
+        // tune freely (config-file exposure is Tier 4 #11, app-shell
+        // completeness - a plain constant for now).
+        private const float TerrainLightContrastBoost = 0.3f;
+
         private const int MapIndex = 0;
 
         // Tree/stump graphics for the debug Harvestables spawned in Load() -
@@ -56,9 +68,11 @@ namespace TEF.Scenes
         private readonly EntityWorld _entities = new();
         private readonly EntityRenderSystem _entityRenderer;
         private readonly AnimatedStatics _animatedStatics = new();
+        private readonly DayNightOverlay _dayNight = new();
         private WorldMap _map;
         private bool _drawStatics = true;
         private bool _drawMapStatics = true; // F7 - independent of F6, entities always draw regardless of either
+        private bool _terrainLightingEnabled = true; // Ctrl+L - for comparing stretched-land shading on/off
 
         // What the cursor was over, produced by Draw and consumed on the next
         // frame's Update (one-frame lag - see PickResult). Tracked separately
@@ -297,6 +311,11 @@ namespace TEF.Scenes
                 _drawMapStatics = !_drawMapStatics;
             }
 
+            if (input.IsActionPressed(GameAction.ToggleTerrainLighting))
+            {
+                _terrainLightingEnabled = !_terrainLightingEnabled;
+            }
+
             if (input.IsActionPressed(GameAction.ToggleDebugInfo))
             {
                 _hud.ShowDebugInfo = !_hud.ShowDebugInfo;
@@ -305,6 +324,14 @@ namespace TEF.Scenes
             if (input.IsActionPressed(GameAction.ToggleFpsCounter))
             {
                 _hud.ShowFps = !_hud.ShowFps;
+            }
+
+            // Debug-only: jump the world clock forward 1 in-game hour per
+            // press, to check day/night ambient darkening without waiting
+            // through a full real-time day cycle.
+            if (input.IsActionPressed(GameAction.DebugAdvanceTime))
+            {
+                Game.World.Advance(Game.World.DayLengthSeconds / 24f);
             }
 
             // Anchor the resource panel to the top-right corner (recomputed
@@ -373,11 +400,31 @@ namespace TEF.Scenes
         {
             base.Draw(batcher);
 
+            // Must run before the world draw below - see DayNightOverlay.Prepare's
+            // doc comment for why (render-target switching can discard the
+            // backbuffer if done after something's already drawn to it).
+            _dayNight.Prepare(Game.GraphicsDevice, Game.World, Camera.Bounds.Width, Camera.Bounds.Height);
+
             // World-space content must be drawn under the camera's view
             // transform or it renders at native pixel size with no zoom -
             // see GameScene.Draw in ClassicUO.Client for the same pattern
             // (`batcher.Begin(null, Camera.ViewTransformMatrix)`).
             batcher.Begin(null, Camera.ViewTransformMatrix);
+
+            // Enables the terrain shader's directional bump-shading
+            // (IsometricWorld.fx's get_light(), dotting each stretched-land
+            // corner's already-computed normal against a fixed light
+            // direction). Without this, Brightlight defaults to 0, which
+            // algebraically collapses get_light() to a flat constant
+            // regardless of the real normal - the per-corner normals
+            // TryBuildStretch/CalculateNormal already compute and
+            // DrawStretchedLand already uploads were being silently
+            // discarded. 1f matches the real client's max "terrain shadows"
+            // setting (full effect); there's no settings/profile system yet
+            // to make this user-tunable (see Tier 4 #11, app-shell
+            // completeness).
+            batcher.SetBrightlight(_terrainLightingEnabled ? TerrainShadowIntensity : 0f);
+            batcher.SetLightContrastBoost(_terrainLightingEnabled ? TerrainLightContrastBoost : 0f);
 
             // Camera only handles zoom/peek, not centering (world (0,0) maps
             // to screen (0,0), the viewport's top-left) - so every world-space
@@ -396,6 +443,10 @@ namespace TEF.Scenes
                 _animatedStatics, _drawStatics && _drawMapStatics);
 
             batcher.End();
+
+            // Ambient day/night darkening, composited over the world just
+            // rendered - before the HUD/UI so darkening never affects them.
+            _dayNight.Composite(batcher, Camera.Bounds);
 
             // Screen-space HUD/UI - each has its own Begin/End (no camera
             // matrix), drawn after the world so they always sit on top.
