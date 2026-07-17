@@ -79,10 +79,12 @@ namespace TEF.World
         /// <param name="entityPick">The topmost live entity under the cursor this frame (Kind == Entity or None). Independent of <paramref name="tilePick"/> - an entity can be standing on any tile.</param>
         /// <param name="tilePick">The topmost map tile (a static if one is there, else the land) under the cursor this frame (Kind == Static, Land, or None). Never Entity - this is map data only.</param>
         /// <param name="drawStatics">When false, skips MAP statics only (debug toggle to inspect land without clutter). Entities and the player always draw regardless.</param>
+        /// <param name="animatedStatics">Shared per-graphic-id animation frame table (fountains, torches, lava, ...) - see AnimatedStatics. Its current offset is added to a static's base graphic before the art lookup.</param>
         public void Draw(
             UltimaBatcher2D batcher, WorldMap map, EntityRenderSystem entities, PlayerEntity player,
             int viewRangeInTiles, Vector2 screenCenterOffset,
-            Point? pickPosition, out PickResult entityPick, out PickResult tilePick, bool drawStatics = true)
+            Point? pickPosition, out PickResult entityPick, out PickResult tilePick,
+            AnimatedStatics animatedStatics, bool drawStatics = true)
         {
             var assets = map.Assets;
 
@@ -158,7 +160,7 @@ namespace TEF.World
                     // entities/the player would vanish along with map statics.
                     DrawStaticsAt(
                         batcher, map, assets, entities, drawStatics, tx, ty, isoOrigin, screenCenterOffset,
-                        isPlayerTile ? player : null, playerPriorityZ, screenCenterOffset);
+                        isPlayerTile ? player : null, playerPriorityZ, screenCenterOffset, animatedStatics);
                 }
             }
 
@@ -296,7 +298,7 @@ namespace TEF.World
         private void DrawStaticsAt(
             UltimaBatcher2D batcher, WorldMap map, GameAssets assets, EntityRenderSystem entities, bool drawMapStatics,
             int tx, int ty, Vector2 isoOrigin, Vector2 screenCenterOffset,
-            PlayerEntity player, int playerPriorityZ, Vector2 playerScreenCenter)
+            PlayerEntity player, int playerPriorityZ, Vector2 playerScreenCenter, AnimatedStatics animatedStatics)
         {
             // Map statics are the only thing gated by drawMapStatics (the F6/F7
             // debug toggles) - entities always draw regardless, so hiding map
@@ -367,7 +369,14 @@ namespace TEF.World
                     continue;
                 }
 
-                ref readonly var sprite = ref assets.Art.GetArt(s.Graphic);
+                // The base graphic drives hue/name/tiledata lookups (s.HueVector
+                // is already baked from it); only the ART lookup uses the
+                // current animation-frame offset, matching View.DrawStaticAnimated's
+                // `graphic + index.AnimOffset` - a static's identity doesn't
+                // change frame to frame, only which sub-frame sprite it shows.
+                ushort animatedGraphic = (ushort)(s.Graphic + animatedStatics.CurrentOffset(s.Graphic));
+
+                ref readonly var sprite = ref assets.Art.GetArt(animatedGraphic);
                 if (sprite.Texture == null)
                 {
                     continue;
@@ -391,7 +400,7 @@ namespace TEF.World
                 );
                 StaticDrawCalls++;
 
-                TestStaticPick(assets, s, screenPos, sprite.UV.Width, sprite.UV.Height, tx, ty);
+                TestStaticPick(assets, s, animatedGraphic, screenPos, sprite.UV.Width, sprite.UV.Height, tx, ty);
             }
 
             // Player sorts above every static on the tile.
@@ -434,7 +443,7 @@ namespace TEF.World
         /// statics (see the _entityPick/_staticPick doc comment) so both are
         /// independently available to game code, not just whichever "won".
         /// </summary>
-        private void TestStaticPick(GameAssets assets, in WorldMap.StaticTile s, Vector2 screenPos, int width, int height, int tx, int ty)
+        private void TestStaticPick(GameAssets assets, in WorldMap.StaticTile s, ushort animatedGraphic, Vector2 screenPos, int width, int height, int tx, int ty)
         {
             if (_pickPosition is not Point p)
             {
@@ -449,7 +458,13 @@ namespace TEF.World
                 return;
             }
 
-            if (!assets.Art.PixelCheck(s.Graphic, lx, ly))
+            // Pixel-check against whichever sub-frame is ACTUALLY on screen
+            // this frame (animatedGraphic), so hit-testing can't drift from
+            // what's rendered - but the reported result below still uses the
+            // base graphic (s.Graphic) for name/identity, matching the real
+            // client (a fountain is still "a fountain" regardless of which
+            // animation frame it's showing).
+            if (!assets.Art.PixelCheck(animatedGraphic, lx, ly))
             {
                 return;
             }

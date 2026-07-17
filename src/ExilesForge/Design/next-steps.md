@@ -162,40 +162,30 @@ everything else builds on.
    map statics - is still deferred; see the harvest-map-static note below
    and the chunk-mesh redesign in item 13.)
 
-9. **Animated statics** — **[TODO]** Review `ClassicUO.Client`'s
-   `AnimatedStaticsManager` (`Game/Managers/AnimatedStaticsManager.cs`) and
-   implement an equivalent for TEF. Confirmed by reading the real
-   implementation: this is a **global, per-graphic-ID frame table**, not
-   per-instance state - entirely orthogonal to TEF's entity system (already
-   noted during the Tier 1 entity-system design). Mechanics:
-   - `Initialize()` scans `TileData.StaticData` once for every graphic with
-     `IsAnimated` set, and for each builds a `StaticAnimationInfo` (index,
-     `IsField` via `StaticFilters.IsField`) - built once, iterated as a
-     tight array from then on.
-   - `Process()` (called periodically, not necessarily every frame - it
-     tracks the nearest next-update time across all animated statics and
-     no-ops until then) reads each due graphic's animation-frame data from
-     `animdata.mul` (`AnimDataFile`/`AnimDataFrame`: `FrameInterval`,
-     `FrameCount`, `FrameData[]` - a per-frame byte offset table), advances
-     that graphic's current frame index, and writes the resulting offset
-     directly onto the **shared art-file entry** for that graphic
-     (`static_data[index + 0x4000].AnimOffset`) - i.e. it mutates a single
-     global "current frame" value per graphic id, not per map instance.
-   - Whatever draws a static's art (`Art.GetArt`/equivalent) then reads
-     using `baseGraphic + AnimOffset` to get the currently-active frame's
-     actual sprite - every fountain/torch/lava tile sharing that graphic id
-     animates in lockstep off the same global offset, which is why this
-     needs no per-instance/per-entity tracking at all.
-   TEF equivalent would need: `ClassicUO.Assets`'s `AnimDataLoader`/
-   `AnimDataFile` equivalent (check it's exposed the same way through
-   `GameAssets`), a small manager built once at `WorldMap`/`GameAssets`
-   load time scanning `TileData.StaticData` for `IsAnimated`, a per-frame
-   or periodic `Process()` call (probably from `GameController.Update` or
-   `WorldScene.FixedUpdate`, matching the "hangs off the sim clock" pattern
-   set by Tier 3 #6), and `TileRenderer`'s static draw path adding the
-   current offset for animated graphics before calling `Art.GetArt`. Not
-   designed in detail yet - this entry is the review/scoping note, not a
-   locked implementation plan; discuss the TEF-side wiring before building.
+9. ~~**Animated statics**~~ **[DONE]** — `World/AnimatedStatics.cs`,
+   mirroring `ClassicUO.Client`'s `AnimatedStaticsManager` (a **global,
+   per-graphic-ID frame table**, not per-instance state - orthogonal to
+   TEF's entity system, as already noted during the Tier 1 entity-system
+   design). `Initialize(assets)` scans `TileData.StaticData` once for every
+   `IsAnimated` graphic; `Update(assets)` is time-gated the same way the
+   real client's `Process()` is (tracks the nearest next-update time across
+   all animated statics, no-ops until then) and reads each due graphic's
+   frame data via `Files.AnimData.CalculateCurrentGraphic` (`animdata.mul`),
+   advancing a per-graphic `sbyte` offset stored in TEF's own array (`_currentOffset`)
+   rather than mutating the shared art-file entry the way the real client
+   does, since TEF's `Art`/atlas wrapper doesn't expose that field the same
+   way. `TileRenderer.DrawStaticsAt` adds `AnimatedStatics.CurrentOffset(
+   s.Graphic)` to the base graphic right before the `Art.GetArt` lookup only
+   - hue/name/tiledata stay keyed to the base graphic (matches
+   `View.DrawStaticAnimated`'s `graphic + index.AnimOffset` convention).
+   Pixel-picking (`TestStaticPick`) checks against the actual animated frame
+   so hit-testing can't drift from what's rendered, while the reported name/
+   graphic in `PickResult` stays the base graphic. Wired into
+   `WorldScene.Update` (called every frame, matching the real client's
+   `GameScene.Update` calling `Process()` every frame rather than the fixed
+   sim tick - it's internally time-gated so cheap when nothing's due).
+   Verified: fountains and torches in the town plaza animate correctly, and
+   hovering a fountain still correctly reports "fountain" by name.
 
 ## Before Tier 4: review map rendering optimizations
 

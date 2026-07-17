@@ -55,6 +55,7 @@ namespace TEF.Scenes
         private readonly TileRenderer _tiles = new();
         private readonly EntityWorld _entities = new();
         private readonly EntityRenderSystem _entityRenderer;
+        private readonly AnimatedStatics _animatedStatics = new();
         private WorldMap _map;
         private bool _drawStatics = true;
         private bool _drawMapStatics = true; // F7 - independent of F6, entities always draw regardless of either
@@ -124,6 +125,7 @@ namespace TEF.Scenes
 
             Camera.Zoom = 1f;
             _map = new WorldMap(Game.Assets, MapIndex);
+            _animatedStatics.Initialize(Game.Assets);
 
             if (_saveData != null)
             {
@@ -267,6 +269,12 @@ namespace TEF.Scenes
 
             Camera.Bounds = Game.GraphicsDevice.Viewport.Bounds;
 
+            // Matches ClassicUO.Client's GameScene.Update calling
+            // AnimatedStaticsManager.Process() every frame (not the fixed
+            // sim tick) - it's internally time-gated (Time.Ticks) so this
+            // is cheap on frames where nothing is actually due to advance.
+            _animatedStatics.Update(Game.Assets);
+
             _player.Update(input, _map);
 
             if (input.ScrollDelta != 0)
@@ -384,7 +392,8 @@ namespace TEF.Scenes
             // Camera.MouseToWorldPosition so it lines up with sprite positions.
             _tiles.Draw(
                 batcher, _map, _entityRenderer, _player, ComputeViewRange(), screenCenter,
-                Camera.MouseToWorldPosition(), out _entityPick, out _tilePick, _drawStatics && _drawMapStatics);
+                Camera.MouseToWorldPosition(), out _entityPick, out _tilePick,
+                _animatedStatics, _drawStatics && _drawMapStatics);
 
             batcher.End();
 
