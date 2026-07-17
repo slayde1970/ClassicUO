@@ -322,10 +322,35 @@ this good enough for now; the chunk-mesh redesign (item 1) and item 3
     instead of a single scalar. Natural to revisit alongside point lights
     (item 10's remaining half), since both touch the same overlay.
 
-12. **App-shell completeness**
-    A config file instead of the hardcoded `--uopath`/`--clientversion`
-    defaults in `Program.cs`; character-spawn scenes instead of a fixed
-    spawn tile. (Animated statics moved to Tier 3 item 9.)
+12. ~~**App-shell completeness**~~ **[DONE]**
+
+    **Config file:** new `Persistence/ConfigManager.cs` (mirrors
+    `SaveManager`'s pattern) - `%AppData%\ExilesForge\config.json` holds
+    `GameSettings` (`UltimaOnlineDirectory`, `ClientVersion`, `Language`,
+    `UseVerdata`, `FPS`). `Program.cs` loads it if present; on first run
+    (no file) it seeds the file with the previous hardcoded developer
+    defaults and writes it out, so it's discoverable/editable without
+    recompiling. `--uopath`/`--clientversion` launch args still override
+    per-session on top, but are NOT written back into the saved file (a
+    transient override, not a persisted change). Verified: first run
+    created the file with the expected defaults; hand-editing a value
+    (`FPS`) and relaunching showed it was read, not silently overwritten.
+
+    **Character-spawn scene:** new `Scenes/SpawnSelectScene.cs` - a
+    "Choose a starting location" screen with a couple of hand-verified
+    preset tile coordinates (deliberately not more, to avoid spawning
+    somewhere unverified like water/inside a wall), plus a Back button.
+    `WorldScene` gained an optional `spawnTile` constructor parameter
+    (`DefaultSpawnTile` - the old hardcoded bank tile - if not given),
+    used for both player spawn and debug-tree placement. `TitleScene`'s
+    New Game flow (both paths - direct, and after the wipe-confirm dialog)
+    now goes through `SpawnSelectScene` instead of straight into
+    `WorldScene`; `Continue` is unaffected (a save always has its own
+    exact position). Extracted the background-image loading/contain-fit
+    logic (previously only in `TitleScene`) into a shared `UI/
+    BackgroundImage.cs` so both title-style scenes reuse it instead of
+    duplicating. Verified end to end: New Game → wipe-confirm → spawn
+    picker → chosen tile.
 
 13. **Smooth Z transitions (revisit in a final polish pass)**
     Player height changes currently snap instantly (see `PlayerEntity.Z`'s doc

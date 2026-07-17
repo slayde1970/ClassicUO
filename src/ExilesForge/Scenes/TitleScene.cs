@@ -4,7 +4,6 @@ using System;
 using System.IO;
 using ClassicUO.Renderer;
 using Microsoft.Xna.Framework;
-using Microsoft.Xna.Framework.Graphics;
 using TEF.Core;
 using TEF.Input;
 using TEF.Persistence;
@@ -32,7 +31,7 @@ namespace TEF.Scenes
         private Panel _confirmDim;
         private Panel _confirmPanel;
 
-        private Texture2D _background;
+        private readonly BackgroundImage _background = new();
 
         public TitleScene(GameController game) : base(game)
         {
@@ -46,13 +45,7 @@ namespace TEF.Scenes
             // isn't ready until GameController.LoadContent - same ordering
             // trap as WorldScene.BuildResourcePanel, so this waits until here.
             BuildMenu();
-            LoadBackground();
-        }
-
-        private void LoadBackground()
-        {
-            using var stream = File.OpenRead(BackgroundPath);
-            _background = Texture2D.FromStream(Game.GraphicsDevice, stream);
+            _background.Load(Game.GraphicsDevice, BackgroundPath);
         }
 
         private const int ButtonPaddingX = 10;
@@ -114,7 +107,7 @@ namespace TEF.Scenes
         {
             if (!SaveManager.Exists())
             {
-                Game.Scenes.ChangeScene(new WorldScene(Game));
+                Game.Scenes.ChangeScene(new SpawnSelectScene(Game));
                 return;
             }
 
@@ -161,7 +154,7 @@ namespace TEF.Scenes
         private void OnConfirmNewGameYes()
         {
             SaveManager.Delete();
-            Game.Scenes.ChangeScene(new WorldScene(Game));
+            Game.Scenes.ChangeScene(new SpawnSelectScene(Game));
         }
 
         private void HideNewGameConfirm()
@@ -190,7 +183,7 @@ namespace TEF.Scenes
             // raw viewport) so it stays correctly placed regardless of
             // window size/aspect, and centered on the artwork rather than
             // the full window (which may be letterboxed on the sides).
-            var bgRect = ComputeContainRect(Camera.Bounds.Width, Camera.Bounds.Height);
+            var bgRect = _background.ComputeContainRect(Camera.Bounds.Width, Camera.Bounds.Height);
             _menuPanel.X = bgRect.X + (bgRect.Width - _menuPanel.Width) / 2;
             _menuPanel.Y = bgRect.Y + (int)(bgRect.Height * ButtonBandTopFraction);
 
@@ -208,21 +201,9 @@ namespace TEF.Scenes
         {
             base.Draw(batcher);
 
-            batcher.Begin();
-            batcher.Draw(_background, ComputeContainRect(Camera.Bounds.Width, Camera.Bounds.Height), ShaderHueTranslator.GetHueVector(0), 0f);
-            batcher.End();
+            _background.Draw(batcher, Camera.Bounds.Width, Camera.Bounds.Height);
 
             _ui.Draw(batcher);
-        }
-
-        /// <summary>Scales the background to fit entirely within the viewport (letterboxed, never cropped) while preserving its aspect ratio, centered - a "cover" fit (scale up to fill/crop) made the artwork feel oversized and cut off its own title text at the bottom.</summary>
-        private Rectangle ComputeContainRect(int viewportWidth, int viewportHeight)
-        {
-            float scale = Math.Min((float)viewportWidth / _background.Width, (float)viewportHeight / _background.Height);
-            int w = (int)(_background.Width * scale);
-            int h = (int)(_background.Height * scale);
-
-            return new Rectangle((viewportWidth - w) / 2, (viewportHeight - h) / 2, w, h);
         }
     }
 }

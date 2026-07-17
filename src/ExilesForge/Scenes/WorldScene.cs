@@ -22,12 +22,13 @@ namespace TEF.Scenes
     /// </summary>
     public sealed class WorldScene : Scene
     {
-        // Britain Bank, Felucca - an arbitrary but well-known, always-valid
-        // spawn point. Stand-in until there's real character-select/spawn
-        // logic to pick this from.
+        // Britain Bank, Felucca - the default spawn point when no location
+        // was explicitly chosen (e.g. restoring a save doesn't need one).
+        // See Scenes/SpawnSelectScene.cs for the actual character-spawn
+        // location picker (Tier 4 #12).
+        public static readonly Vector2 DefaultSpawnTile = new(1591f, 1518f);
 
-        //private static readonly Vector2 SpawnTile = new(1395f, 1409f); // original spot
-        private static readonly Vector2 SpawnTile = new(1591f, 1518f); // bank
+        private readonly Vector2 _spawnTile;
 
         // Iso constants: a tile steps 44px (2 * 22) diagonally per unit change
         // in the (x - y)/(x + y) axes, so the on-screen coverage of a square
@@ -109,10 +110,11 @@ namespace TEF.Scenes
         // restore this exact state instead - see Load()/RestoreFromSave().
         private readonly SaveData _saveData;
 
-        public WorldScene(GameController game, SaveData saveData = null) : base(game)
+        public WorldScene(GameController game, SaveData saveData = null, Vector2? spawnTile = null) : base(game)
         {
             _entityRenderer = new EntityRenderSystem(_entities, game.Assets);
             _saveData = saveData;
+            _spawnTile = spawnTile ?? DefaultSpawnTile;
         }
 
         private void BuildResourcePanel()
@@ -147,7 +149,7 @@ namespace TEF.Scenes
             }
             else
             {
-                _player.Spawn(_map, SpawnTile);
+                _player.Spawn(_map, _spawnTile);
                 SpawnDebugTrees();
             }
         }
@@ -255,7 +257,7 @@ namespace TEF.Scenes
 
             foreach (var offset in offsets)
             {
-                var position = SpawnTile + offset;
+                var position = _spawnTile + offset;
                 int tx = (int)Math.Floor(position.X);
                 int ty = (int)Math.Floor(position.Y);
                 sbyte z = _map.ResolveSpawnZ(tx, ty);
