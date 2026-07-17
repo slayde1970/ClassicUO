@@ -35,7 +35,7 @@ namespace TEF.UI
         public bool ShowDebugInfo { get; set; } = true;
         public bool ShowFps { get; set; } = true;
 
-        public void Draw(UltimaBatcher2D batcher, in PickResult tilePick, in PickResult entityPick, WorldClock clock, WorldMap map, TileRenderer tiles)
+        public void Draw(UltimaBatcher2D batcher, in PickResult tilePick, in PickResult entityPick, WorldClock clock, WorldMap map, TileRenderer tiles, int worldFlushesDone, int worldTextureSwitches)
         {
             if (!ShowDebugInfo && !ShowFps)
             {
@@ -59,8 +59,9 @@ namespace TEF.UI
                 string timeLine = $"Time: Day {clock.Day}  {clock.Hour12:D2}:{clock.Minute:D2} {clock.MeridiemTag}";
                 string cacheLine = $"Blocks cached: {map.CachedBlockCount}";
                 string drawLine = $"Draws: land={tiles.LandDrawCalls} static={tiles.StaticDrawCalls} stretched={tiles.StretchedLandDrawCalls}";
+                string gpuLine = $"GPU: flushes={worldFlushesDone} texSwitches={worldTextureSwitches}";
 
-                block = tileLine + "\n" + entityLine + "\n" + timeLine + "\n" + cacheLine + "\n" + drawLine;
+                block = tileLine + "\n" + entityLine + "\n" + timeLine + "\n" + cacheLine + "\n" + drawLine + "\n" + gpuLine;
             }
 
             // Measure everything up front so the background panel can be

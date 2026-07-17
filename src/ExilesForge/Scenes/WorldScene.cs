@@ -84,6 +84,11 @@ namespace TEF.Scenes
         private PickResult _entityPick;
         private PickResult _tilePick;
 
+        // See the FlushesDone/TextureSwitches capture in Draw() - debug/perf
+        // investigation only.
+        private int _lastWorldFlushesDone;
+        private int _lastWorldTextureSwitches;
+
         private readonly DebugHud _hud = new();
 
         // First real (non-debug) piece of UI built on the control system -
@@ -446,13 +451,24 @@ namespace TEF.Scenes
 
             batcher.End();
 
+            // Snapshot right after End() flushes the world pass - Batcher2D
+            // resets both counters on every Begin(), and several more
+            // Begin()/End() pairs (day/night, HUD, UI) still run this frame.
+            // Debug-only, to check whether Batcher2D's same-texture-run
+            // coalescing (see Batcher2D.Flush) already merges most of our
+            // per-static Draw() calls into far fewer real GPU submissions,
+            // before assuming the chunk-mesh GPU redesign (Tier 4 #13) is
+            // the right lever.
+            _lastWorldFlushesDone = batcher.FlushesDone;
+            _lastWorldTextureSwitches = batcher.TextureSwitches;
+
             // Ambient day/night darkening, composited over the world just
             // rendered - before the HUD/UI so darkening never affects them.
             _dayNight.Composite(batcher, Camera.Bounds);
 
             // Screen-space HUD/UI - each has its own Begin/End (no camera
             // matrix), drawn after the world so they always sit on top.
-            _hud.Draw(batcher, _tilePick, _entityPick, Game.World, _map, _tiles);
+            _hud.Draw(batcher, _tilePick, _entityPick, Game.World, _map, _tiles, _lastWorldFlushesDone, _lastWorldTextureSwitches);
             _ui.Draw(batcher);
         }
 

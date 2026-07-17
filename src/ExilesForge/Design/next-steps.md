@@ -22,9 +22,10 @@ everything else builds on.
    cache) used by both the renderer and gameplay. Player stands on the surface
    Z, and movement is blocked into impassable land (water/mountains) and
    Surface/Impassable statics, with wall-sliding on blocked diagonals.
-   `WorldMap.TryGetStandZ` is the walkability check. Height changes snap
-   instantly (an eased visual transition was tried and reverted — see Tier 4
-   item 13).
+   `WorldMap.TryGetStandZ` is the walkability check. `Z` itself snaps
+   instantly (a shared eased transition was tried and reverted early on); a
+   purely cosmetic ease-in on the player's own sprite was added later - see
+   Tier 4 item 12.
    - Remaining polish (deferred, "good enough for now"): a few minor collision
      edge cases; `MaxStepUp` climb allowance is a tunable constant that could
      be refined.
@@ -36,8 +37,9 @@ everything else builds on.
    Uncovered and fixed two related bugs along the way: (a) the world's iso
    origin was missing the same "-22" screen-position bias every land/static
    tile applies (`GameObject.UpdateRealScreenPosition`), causing the player
-   to render offset from everything else; (b) see Tier 4 item 13 for the
-   eased-Z-transition clipping bug this also exposed.
+   to render offset from everything else; (b) see Tier 4 item 12 for the
+   eased-Z-transition clipping bug this also exposed (and how it was later
+   fixed cosmetically without repeating that bug).
 
 3. ~~**Entity system**~~ **[DONE]** — see `Design/prd-entity-system.md` for
    the full design. Hand-rolled ID-based entity registry (no third-party ECS
@@ -160,7 +162,7 @@ everything else builds on.
    (`WorldMap.CachedBlockCount`) to confirm the count stays bounded during a
    long roam. Verified. (Mutable world state - placed buildings, harvested
    map statics - is still deferred; see the harvest-map-static note below
-   and the chunk-mesh redesign in item 14.)
+   and the chunk-mesh redesign in item 13.)
 
 9. ~~**Animated statics**~~ **[DONE]** — `World/AnimatedStatics.cs`,
    mirroring `ClassicUO.Client`'s `AnimatedStaticsManager` (a **global,
@@ -228,9 +230,13 @@ this good enough for now; the chunk-mesh redesign (item 1) and item 3
 
 ## Tier 4 — Polish (defer until Tiers 1-3 are in)
 
-10. **Lighting** — **[IN PROGRESS]** directional slope shading **[DONE]**,
-    day/night ambient darkening **[DONE]**; point lights (flames/braziers)
-    still **[TODO]**, deferred by explicit user choice (see below).
+10. ~~**Lighting**~~ **[DONE for this tier]** — directional slope shading
+    and day/night ambient darkening both done and verified. Point lights
+    (flames/braziers) and day/night color (sunrise/sunset tint, moonlight
+    glow) are explicitly deferred to **Tier 6** (see that section) rather
+    than blocking this item - both are open design questions (a light-
+    source data model; a richer color curve) the user chose to revisit
+    later rather than bundle in now.
 
     Directional shading turned out to be a near-zero-cost fix, not new work:
     traced the actual shader (`ClassicUO.Renderer/shaders/IsometricWorld.fx`)
@@ -299,30 +305,17 @@ this good enough for now; the chunk-mesh redesign (item 1) and item 3
     F10 repeatedly cycles the scene through visibly darker/brighter, properly
     blended with the world underneath (not replacing it).
 
-    **Point lights (flames/braziers): explicitly deferred, not started.**
-    User's call: ship ambient day/night alone this pass rather than bundle
-    in point-light registration/rendering, since which statics/entities
-    emit light (and at what radius/color) is its own open design question
-    with no data model yet - not just a rendering one. `DayNightOverlay`'s
-    render-target architecture is specifically shaped so point lights can
-    be added later (additively drawn into the same target during `Prepare`,
-    before the darkness clear's result is composited) without a rewrite.
+    **Point lights (flames/braziers): explicitly deferred to Tier 6, not
+    started.** User's call: ship ambient day/night alone this pass rather
+    than bundle in point-light registration/rendering, since which
+    statics/entities emit light (and at what radius/color) is its own open
+    design question with no data model yet - not just a rendering one.
+    `DayNightOverlay`'s render-target architecture is specifically shaped so
+    point lights can be added later (additively drawn into the same target
+    during `Prepare`, before the darkness clear's result is composited)
+    without a rewrite.
 
-11. **Day/night lighting polish (revisit `DayNightOverlay` - color, not just brightness)**
-    Currently `DayNightOverlay.ComputeBrightness` only darkens/brightens a
-    neutral gray (`new Color(brightness, brightness, brightness, 1f)`) - no
-    color tint at all. Revisit later to add: a warm orange/pink tint around
-    sunrise/sunset (blend toward e.g. a warm color near `TimeOfDay` ~0.25/
-    ~0.75, fading back to neutral gray by mid-day/mid-night), and a cool
-    blue moonlight tint at night instead of a flat gray floor (replace the
-    plain `MinBrightness` gray with a dim blue-tinted color at midnight).
-    Both are pure tuning/color-curve work on top of the existing render-
-    target architecture - no new rendering mechanism needed, just a richer
-    `ComputeBrightness`-equivalent that returns a `Color` (hue + brightness)
-    instead of a single scalar. Natural to revisit alongside point lights
-    (item 10's remaining half), since both touch the same overlay.
-
-12. ~~**App-shell completeness**~~ **[DONE]**
+11. ~~**App-shell completeness**~~ **[DONE]**
 
     **Config file:** new `Persistence/ConfigManager.cs` (mirrors
     `SaveManager`'s pattern) - `%AppData%\ExilesForge\config.json` holds
@@ -352,7 +345,7 @@ this good enough for now; the chunk-mesh redesign (item 1) and item 3
     duplicating. Verified end to end: New Game → wipe-confirm → spawn
     picker → chosen tile.
 
-13. ~~**Smooth Z transitions**~~ **[DONE]**
+12. ~~**Smooth Z transitions**~~ **[DONE]**
 
     An earlier attempt eased a separate `RenderZ` toward the logical `Z` and
     used IT for the world's vertical draw offset, but `TileRenderer`
@@ -381,7 +374,7 @@ this good enough for now; the chunk-mesh redesign (item 1) and item 3
     `Spawn`/`RestoreState` (teleport-style position sets). Verified: walking
     across steps/ramps looks smooth, user confirmed "good enough for now."
 
-14. **GPU-resident chunk-mesh render redesign (deferred perf item)**
+13. **GPU-resident chunk-mesh render redesign (deferred perf item)** — **[IN PROGRESS - PRD underway]**
     The big rendering-perf fix identified in the "Before Tier 4" review
     above: TEF currently issues one `batcher.Draw` per static per frame
     (~13k in a dense town plaza), where ClassicUO.Client bakes each chunk's
@@ -397,6 +390,43 @@ this good enough for now; the chunk-mesh redesign (item 1) and item 3
     (baked `Drawable`/`HueVector`) are already done; this is the remaining
     GPU-batching half. Also fold in tighter per-object screen-pixel culling
     (real client's `GetViewPort`/`_minPixel`/`_maxPixel`) at the same time.
+
+## Tier 5 — reserved
+
+Not yet scoped - the numbering gap before Tier 6 is intentional, not a
+mistake. Expected to hold gameplay/survival-systems work once the engine/
+world-foundation tiers above are further along; nothing decided yet.
+
+## Tier 6 — Lighting refinement (deferred)
+
+User's explicit call: delay both of these rather than bundle them into
+Tier 4 item 10's initial pass. Both revisit `World/DayNightOverlay.cs`.
+
+14. **Point lights (flames/braziers)**
+    Deferred from Tier 4 item 10. Which statics/entities emit light (and at
+    what radius/color) is its own open design question with no data model
+    yet - not just a rendering one. `DayNightOverlay`'s render-target
+    architecture is already shaped to support this without a rewrite
+    (additively draw into the same target during `Prepare`, before the
+    darkness clear's result is composited) - see `ClassicUO.Client`'s
+    `GameScene.PrepareLightsRendering`/`Lights` atlas for the real client's
+    approach (billboard light sprites drawn additively per registered
+    `LightData` entry).
+
+15. **Day/night color, not just brightness**
+    Deferred from Tier 4 item 10 (originally added as its own item 11).
+    Currently `DayNightOverlay.ComputeBrightness` only darkens/brightens a
+    neutral gray (`new Color(brightness, brightness, brightness, 1f)`) - no
+    color tint at all. Revisit to add: a warm orange/pink tint around
+    sunrise/sunset (blend toward a warm color near `TimeOfDay` ~0.25/~0.75,
+    fading back to neutral gray by mid-day/mid-night), and a cool blue
+    moonlight tint at night instead of a flat gray floor (replace the plain
+    `MinBrightness` gray with a dim blue-tinted color at midnight). Both are
+    pure tuning/color-curve work on top of the existing render-target
+    architecture - no new rendering mechanism needed, just a richer
+    `ComputeBrightness`-equivalent that returns a `Color` (hue + brightness)
+    instead of a single scalar. Natural to revisit alongside point lights
+    (item 14), since both touch the same overlay.
 
 ## Deferred gameplay-design notes (game-dev phase, not engine phase)
 
@@ -448,6 +478,9 @@ Tier 1, Tier 2, and all of Tier 3 (game clock, persistence + title screen,
 chunk-cache eviction, animated statics) are now fully done. The "walk up to
 a tree, click it, chop it, get wood" loop is real end to end, with a real
 UI counter surfacing it (the "Resources" panel), a saved/resumable session,
-and a bounded-memory world cache. Next up is Tier 4 (lighting, app-shell
-completeness, smooth Z transitions, and the deferred chunk-mesh GPU
-redesign).
+and a bounded-memory world cache. Tier 4's lighting (directional shading +
+day/night ambient), app-shell completeness, and smooth Z transitions are
+also done - only the GPU chunk-mesh redesign (item 13) remains, currently
+being scoped into its own PRD. Point lights and day/night color are
+deliberately deferred to Tier 6 (reserved slot at Tier 5). Tier 6 last,
+once Tier 5 exists and is scoped.
