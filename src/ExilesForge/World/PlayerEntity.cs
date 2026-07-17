@@ -31,8 +31,24 @@ namespace TEF.World
         private const ushort BodyMaleHuman = 0x0190;
         private const int MillisecondsPerFrame = 150; // matches ClassicUO's WALKING_DELAY
 
+        private const float ZOffsetDecayRate = 18f; // higher = faster ease-out
+        private const float ZOffsetSnapThreshold = 0.05f; // pixels - avoids perpetual sub-pixel jitter
+
         private float _frameTimeAccumulator;
         private int _frameIndex;
+
+        // Purely cosmetic pixel offset on the player's OWN sprite draw
+        // position - never read by TileRenderer, which always uses the true,
+        // instant Z for the world's vertical offset (see Z's own doc
+        // comment for why an earlier attempt that eased Z itself, shared
+        // with the world, caused misalignment). On a height change, this is
+        // set to the same delta the ground just visually jumped by
+        // (TileRenderer's isoOrigin shifts by Z*4 px), so the sprite starts
+        // the transition looking exactly as it did before the step, then
+        // decays to 0 over a fraction of a second - easing the step in
+        // instead of popping, without the two ever disagreeing about where
+        // the ground actually is.
+        private float _visualZOffset;
 
         public ushort Graphic { get; set; } = BodyMaleHuman;
         public Vector2 WorldPosition { get; private set; }
@@ -46,8 +62,12 @@ namespace TEF.World
         /// caused the ground to briefly render at the wrong height relative
         /// to the player while walking across a height boundary (invisible
         /// once the ease caught up at rest, so it read as intermittent
-        /// clipping). Height changes now snap instantly; UO's actual per-tile
-        /// height steps are small enough that this isn't jarring.
+        /// clipping). Z itself still snaps instantly for this reason; a
+        /// purely cosmetic ease-in on top now lives entirely in
+        /// _visualZOffset (applied only to the player's own sprite draw
+        /// position, never read by TileRenderer) so a step still LOOKS
+        /// smooth without the two ever disagreeing about where the ground
+        /// actually is.
         /// </summary>
         public sbyte Z { get; private set; }
 
@@ -55,6 +75,7 @@ namespace TEF.World
         {
             WorldPosition = tilePosition;
             Z = map.ResolveSpawnZ((int)MathF.Floor(tilePosition.X), (int)MathF.Floor(tilePosition.Y));
+            _visualZOffset = 0f;
         }
 
         /// <summary>Restores exact saved state (see Persistence/SaveManager) - unlike Spawn, does not recompute Z via WorldMap.ResolveSpawnZ since the exact value is already known.</summary>
@@ -63,6 +84,7 @@ namespace TEF.World
             WorldPosition = worldPosition;
             Z = z;
             Facing = facing;
+            _visualZOffset = 0f;
         }
 
         /// <param name="moveSpeed">Tiles per second at normal (non-sprint) pace.</param>
@@ -109,6 +131,22 @@ namespace TEF.World
             }
 
             AdvanceAnimationFrame();
+            DecayVisualZOffset();
+        }
+
+        private void DecayVisualZOffset()
+        {
+            if (_visualZOffset == 0f)
+            {
+                return;
+            }
+
+            _visualZOffset *= MathF.Exp(-ZOffsetDecayRate * Time.Delta);
+
+            if (MathF.Abs(_visualZOffset) < ZOffsetSnapThreshold)
+            {
+                _visualZOffset = 0f;
+            }
         }
 
         /// <summary>
@@ -156,6 +194,12 @@ namespace TEF.World
             if (map.TryGetStandZ(toX, toY, Z, out sbyte newZ))
             {
                 WorldPosition = candidate;
+
+                if (newZ != Z)
+                {
+                    _visualZOffset += (newZ - Z) * 4f;
+                }
+
                 Z = newZ;
                 return true;
             }
@@ -264,7 +308,7 @@ namespace TEF.World
             float x = mirror
                 ? -(sprite.UV.Width - sprite.Center.X)
                 : -sprite.Center.X;
-            float y = -(sprite.UV.Height + sprite.Center.Y);
+            float y = -(sprite.UV.Height + sprite.Center.Y) + _visualZOffset;
             localOrigin = new Vector2(x, y);
 
             return true;

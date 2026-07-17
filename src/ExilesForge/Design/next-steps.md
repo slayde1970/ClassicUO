@@ -352,21 +352,34 @@ this good enough for now; the chunk-mesh redesign (item 1) and item 3
     duplicating. Verified end to end: New Game → wipe-confirm → spawn
     picker → chosen tile.
 
-13. **Smooth Z transitions (revisit in a final polish pass)**
-    Player height changes currently snap instantly (see `PlayerEntity.Z`'s doc
-    comment) rather than easing, on purpose: a first attempt eased a separate
-    `RenderZ` toward the logical `Z` and used it for the world's vertical draw
-    offset, but `TileRenderer` positions terrain using each tile's own true,
-    un-eased Z - so during the ease window after crossing a height boundary,
-    the ground briefly rendered at the wrong offset relative to the player's
-    fixed feet position. This only showed up while walking (never at rest,
-    once the ease caught up), which made it confusing to track down. Snapping
-    instantly sidesteps the whole class of bug and isn't very jarring in
-    practice since UO's per-tile height steps are small. If a smooth step
-    feels worth adding back later, it needs to be purely cosmetic on the
-    player SPRITE draw (a bob that doesn't feed into where the world/terrain
-    is positioned), not a shared "world height" value - the two must never be
-    allowed to disagree on where the ground actually is.
+13. ~~**Smooth Z transitions**~~ **[DONE]**
+
+    An earlier attempt eased a separate `RenderZ` toward the logical `Z` and
+    used IT for the world's vertical draw offset, but `TileRenderer`
+    positions terrain using each tile's own true, un-eased Z - so during the
+    ease window after crossing a height boundary, the ground briefly
+    rendered at the wrong offset relative to the player's fixed feet
+    position (only visible while walking, gone at rest, which made it
+    confusing to track down at the time). That version was reverted; `Z`
+    itself has snapped instantly ever since.
+
+    This time confirmed first (before writing any code) that `PlayerEntity`'s
+    own sprite draw position never reads `Z` at all - it's fixed at screen
+    center; the WORLD scrolls under it via `TileRenderer`'s `isoOrigin`
+    (which correctly uses the true instant `Z`). That's the safe boundary a
+    purely-cosmetic fix needs to respect. Added `PlayerEntity._visualZOffset`
+    - a decaying pixel offset applied ONLY inside `TryResolveFrame` (shared
+    by `Draw`/`TryPick`, so hit-testing can't drift from what's rendered),
+    never read by `TileRenderer`. On a height change (`TryStep`), it's set
+    to the same delta the ground just visually jumped by (`(newZ - Z) *
+    4f`), so the sprite starts the transition looking exactly as it did
+    before the step, then decays exponentially to 0 over a fraction of a
+    second (`ZOffsetDecayRate = 18f`, snapped to exactly 0 below a 0.05px
+    threshold to avoid perpetual sub-pixel jitter) - easing the step in
+    visually while the terrain snaps instantly underneath, so the two can
+    never disagree about where the ground actually is. Reset to 0 on
+    `Spawn`/`RestoreState` (teleport-style position sets). Verified: walking
+    across steps/ramps looks smooth, user confirmed "good enough for now."
 
 14. **GPU-resident chunk-mesh render redesign (deferred perf item)**
     The big rendering-perf fix identified in the "Before Tier 4" review
