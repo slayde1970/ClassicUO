@@ -24,11 +24,10 @@ everything else builds on.
    Surface/Impassable statics, with wall-sliding on blocked diagonals.
    `WorldMap.TryGetStandZ` is the walkability check. Height changes snap
    instantly (an eased visual transition was tried and reverted — see Tier 4
-   item 11).
+   item 12).
    - Remaining polish (deferred, "good enough for now"): a few minor collision
      edge cases; `MaxStepUp` climb allowance is a tunable constant that could
-     be refined; `WorldMap`'s block cache has no eviction yet (folds into the
-     chunk-cache item).
+     be refined.
 
 2. ~~**Depth sorting: player/entities interleaved with statics**~~ **[DONE]**
    The player draws inside `TileRenderer`'s back-to-front pass, interleaved
@@ -37,7 +36,7 @@ everything else builds on.
    Uncovered and fixed two related bugs along the way: (a) the world's iso
    origin was missing the same "-22" screen-position bias every land/static
    tile applies (`GameObject.UpdateRealScreenPosition`), causing the player
-   to render offset from everything else; (b) see Tier 4 item 11 for the
+   to render offset from everything else; (b) see Tier 4 item 12 for the
    eased-Z-transition clipping bug this also exposed.
 
 3. ~~**Entity system**~~ **[DONE]** — see `Design/prd-entity-system.md` for
@@ -161,7 +160,42 @@ everything else builds on.
    (`WorldMap.CachedBlockCount`) to confirm the count stays bounded during a
    long roam. Verified. (Mutable world state - placed buildings, harvested
    map statics - is still deferred; see the harvest-map-static note below
-   and the chunk-mesh redesign in item 12.)
+   and the chunk-mesh redesign in item 13.)
+
+9. **Animated statics** — **[TODO]** Review `ClassicUO.Client`'s
+   `AnimatedStaticsManager` (`Game/Managers/AnimatedStaticsManager.cs`) and
+   implement an equivalent for TEF. Confirmed by reading the real
+   implementation: this is a **global, per-graphic-ID frame table**, not
+   per-instance state - entirely orthogonal to TEF's entity system (already
+   noted during the Tier 1 entity-system design). Mechanics:
+   - `Initialize()` scans `TileData.StaticData` once for every graphic with
+     `IsAnimated` set, and for each builds a `StaticAnimationInfo` (index,
+     `IsField` via `StaticFilters.IsField`) - built once, iterated as a
+     tight array from then on.
+   - `Process()` (called periodically, not necessarily every frame - it
+     tracks the nearest next-update time across all animated statics and
+     no-ops until then) reads each due graphic's animation-frame data from
+     `animdata.mul` (`AnimDataFile`/`AnimDataFrame`: `FrameInterval`,
+     `FrameCount`, `FrameData[]` - a per-frame byte offset table), advances
+     that graphic's current frame index, and writes the resulting offset
+     directly onto the **shared art-file entry** for that graphic
+     (`static_data[index + 0x4000].AnimOffset`) - i.e. it mutates a single
+     global "current frame" value per graphic id, not per map instance.
+   - Whatever draws a static's art (`Art.GetArt`/equivalent) then reads
+     using `baseGraphic + AnimOffset` to get the currently-active frame's
+     actual sprite - every fountain/torch/lava tile sharing that graphic id
+     animates in lockstep off the same global offset, which is why this
+     needs no per-instance/per-entity tracking at all.
+   TEF equivalent would need: `ClassicUO.Assets`'s `AnimDataLoader`/
+   `AnimDataFile` equivalent (check it's exposed the same way through
+   `GameAssets`), a small manager built once at `WorldMap`/`GameAssets`
+   load time scanning `TileData.StaticData` for `IsAnimated`, a per-frame
+   or periodic `Process()` call (probably from `GameController.Update` or
+   `WorldScene.FixedUpdate`, matching the "hangs off the sim clock" pattern
+   set by Tier 3 #6), and `TileRenderer`'s static draw path adding the
+   current offset for animated graphics before calling `Art.GetArt`. Not
+   designed in detail yet - this entry is the review/scoping note, not a
+   locked implementation plan; discuss the TEF-side wiring before building.
 
 ## Before Tier 4: review map rendering optimizations
 
@@ -204,17 +238,17 @@ this good enough for now; the chunk-mesh redesign (item 1) and item 3
 
 ## Tier 4 — Polish (defer until Tiers 1-3 are in)
 
-9. **Lighting**
-   Directional shading via the per-corner normals already computed in
-   `TileRenderer` for stretched land, plus light sources (flames/braziers)
-   and day/night.
+10. **Lighting**
+    Directional shading via the per-corner normals already computed in
+    `TileRenderer` for stretched land, plus light sources (flames/braziers)
+    and day/night.
 
-10. **Animated statics & app-shell completeness**
-    Animated statics (flames, water); a config file instead of the hardcoded
-    `--uopath`/`--clientversion` defaults in `Program.cs`; main-menu /
-    character-spawn scenes instead of a fixed spawn tile.
+11. **App-shell completeness**
+    A config file instead of the hardcoded `--uopath`/`--clientversion`
+    defaults in `Program.cs`; character-spawn scenes instead of a fixed
+    spawn tile. (Animated statics moved to Tier 3 item 9.)
 
-11. **Smooth Z transitions (revisit in a final polish pass)**
+12. **Smooth Z transitions (revisit in a final polish pass)**
     Player height changes currently snap instantly (see `PlayerEntity.Z`'s doc
     comment) rather than easing, on purpose: a first attempt eased a separate
     `RenderZ` toward the logical `Z` and used it for the world's vertical draw
@@ -230,7 +264,7 @@ this good enough for now; the chunk-mesh redesign (item 1) and item 3
     is positioned), not a shared "world height" value - the two must never be
     allowed to disagree on where the ground actually is.
 
-12. **GPU-resident chunk-mesh render redesign (deferred perf item)**
+13. **GPU-resident chunk-mesh render redesign (deferred perf item)**
     The big rendering-perf fix identified in the "Before Tier 4" review
     above: TEF currently issues one `batcher.Draw` per static per frame
     (~13k in a dense town plaza), where ClassicUO.Client bakes each chunk's
