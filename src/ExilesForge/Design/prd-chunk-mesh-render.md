@@ -222,28 +222,47 @@ tuned ones.
 
 ## 5. Acceptance criteria for this phase
 
-- [ ] Same dense-plaza test scene: FPS measurably improves over the
-  current ~94-99 FPS baseline (exact target TBD - report the real number,
-  don't pre-commit to a specific figure before measuring).
-- [ ] GPU flush/texture-switch count (debug HUD) drops meaningfully for
+- [x] Same dense-plaza test scene: FPS measurably improves over the
+  current ~94-99 FPS baseline. **Measured: ~350 FPS** at the fountain
+  plaza - a >3x improvement.
+- [x] GPU flush/texture-switch count (debug HUD) drops meaningfully for
   that scene, confirming the texmap/Art-atlas ping-pong is actually fixed,
-  not just moved around.
-- [ ] No regression in the three historical depth-sorting bugs this
+  not just moved around. **Measured: flushes=11, texSwitches=167** at the
+  fountain plaza (vs. ~2,386 flushes pre-mesh from this PRD's original
+  problem-statement measurement).
+- [x] No regression in the three historical depth-sorting bugs this
   project already fixed: fountain-over-pavers, river/water-over-hillside,
-  player occlusion (walk behind/in-front of statics and trees correctly at
-  the exact spots those bugs originally showed up, per `next-steps.md`
-  Tier 1 items 1-2's history).
-- [ ] Mouse picking (hover names, harvest-click) still works identically
-  after being decoupled from drawing - verified at the same fountain/tree
-  spots used throughout this session's picking work.
-- [ ] Animated statics (fountains, torches) still animate correctly -
+  player occlusion. All three verified working after also fixing a new
+  bug this redesign introduced (see below).
+- [x] Mouse picking (hover names, harvest-click) still works identically
+  after being decoupled from drawing (task 8) - verified against flat and
+  stretched/hilly land plus statics at the fountain plaza.
+- [x] Animated statics (fountains, torches) still animate correctly -
   unaffected since excluded from the mesh.
-- [ ] Day/night ambient overlay (`DayNightOverlay`) still composites
-  correctly - it's a post-process over the finished frame, independent of
-  this change, but worth an explicit re-check given it also touches
-  render-target/blend-state plumbing.
+- [x] Day/night ambient overlay (`DayNightOverlay`) still composites
+  correctly - unaffected, no regression observed during testing.
 - [ ] Chunk-cache eviction (F-key toggles, "Blocks cached" HUD line) still
   behaves correctly with `BlockMesh` disposal wired to the same trigger.
+  **Deliberately deferred** (see `next-steps.md` task list item 9) -
+  `BlockMesh` GPU/CPU resources are not yet freed when a block leaves
+  `WorldMap`'s cache radius, so long play sessions accumulate meshes
+  unboundedly. Lower priority than the rest of this phase since it's a
+  memory-growth issue, not a correctness or performance regression today.
+
+### Bug found and fixed during this phase (not in the original design)
+
+Ground-level, `Background`-flagged flat statics (e.g. stone pavers) lost
+the GPU depth test against their own tile's land and vanished. Root cause:
+`BlockMesh`'s land depth key used the tile's bare `z`, but
+`Chunk.AddGameObject`'s real land case actually uses `z - 2` (flat) /
+`AverageZ - 2` (stretched) - land must sort behind *every* static on its
+tile, even one whose own `priorityZ` dips to `z - 1` (background flag,
+no height). Fixed in `BlockMesh.TryAddLandQuad` by porting the exact `- 2`
+bias (see its comments) and by having `TileRenderer.TryBuildStretch` also
+report `AverageZ`. This same fix also resolved the previously-unrelated
+"missing tiles along water/shorelines" issue logged earlier in
+`next-steps.md` - it turned out to be the same underlying bug, not a
+separate one.
 
 ## 6. Open questions carried forward (not blocking this phase)
 

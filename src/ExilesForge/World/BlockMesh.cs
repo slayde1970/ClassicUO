@@ -32,12 +32,29 @@ namespace TEF.World
     /// integer offsetX/offsetY, matching the real client's own approach and
     /// TileRenderer's pixel-snapped worldOffset (see its Draw method).
     /// </summary>
+    /// <summary>
+    /// Cached-at-build-time land info for picking (Tier 4 #13 task 8):
+    /// mouse picking needs a tile's screen position and land graphic every
+    /// frame, but re-deriving it via TileRenderer.TryBuildStretch would
+    /// mean redoing the same up-to-11-neighbor-lookup stretch computation
+    /// BlockMesh.Build already did once, purely to answer a hit test.
+    /// </summary>
+    public struct LandPickInfo
+    {
+        public bool HasLand;
+        public ushort TileId;
+        public float ScreenX;
+        public float ScreenY;
+    }
+
     public sealed class BlockMesh
     {
         private UltimaBatcher2D.PositionNormalTextureColor4[] _landVertices = Array.Empty<UltimaBatcher2D.PositionNormalTextureColor4>();
         private Texture2D[] _landTextures = Array.Empty<Texture2D>();
         private bool[] _landVisible = Array.Empty<bool>();
         private int _landCount;
+
+        private readonly LandPickInfo[] _landPick = new LandPickInfo[WorldMap.BlockSize * WorldMap.BlockSize];
 
         // Mesh-eligible map statics only - animated/foliage/tree/rock stay
         // on TileRenderer's per-object draw path (see StaticMeshFilter),
@@ -52,6 +69,9 @@ namespace TEF.World
         // Debug/perf-investigation only - how many quads this block actually baked into each layer.
         public int LandQuadCount => _landCount;
         public int StaticQuadCount => _staticCount;
+
+        /// <summary>Cached land pick info for a tile local to this block (Tier 4 #13 task 8 - see LandPickInfo).</summary>
+        public LandPickInfo GetLandPick(int localX, int localY) => _landPick[localY * WorldMap.BlockSize + localX];
 
         public void Build(WorldMap map, GameAssets assets, int blockX, int blockY)
         {
@@ -68,7 +88,7 @@ namespace TEF.World
                     int tx = baseX + lx;
                     int ty = baseY + ly;
 
-                    TryAddLandQuad(map, assets, tx, ty, landQuads);
+                    TryAddLandQuad(map, assets, tx, ty, landQuads, _landPick, ly * WorldMap.BlockSize + lx);
                     AddStaticQuads(map, assets, tx, ty, staticQuads);
                 }
             }
@@ -169,7 +189,8 @@ namespace TEF.World
 
         private static void TryAddLandQuad(
             WorldMap map, GameAssets assets, int tx, int ty,
-            List<(UltimaBatcher2D.PositionNormalTextureColor4 Vertex, Texture2D Texture)> quads)
+            List<(UltimaBatcher2D.PositionNormalTextureColor4 Vertex, Texture2D Texture)> quads,
+            LandPickInfo[] pickInfo, int pickIndex)
         {
             const int TileSize = TileRenderer.TileSize;
 
@@ -216,6 +237,14 @@ namespace TEF.World
                     );
 
                     quads.Add((vertex, texmap.Texture));
+
+                    pickInfo[pickIndex] = new LandPickInfo
+                    {
+                        HasLand = true,
+                        TileId = tileId,
+                        ScreenX = planarX,
+                        ScreenY = stretchedY,
+                    };
                     return;
                 }
             }
@@ -238,6 +267,14 @@ namespace TEF.World
             );
 
             quads.Add((flatVertex, sprite.Texture));
+
+            pickInfo[pickIndex] = new LandPickInfo
+            {
+                HasLand = true,
+                TileId = tileId,
+                ScreenX = planarX,
+                ScreenY = flatY,
+            };
         }
 
         /// <summary>

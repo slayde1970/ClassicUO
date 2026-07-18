@@ -374,22 +374,29 @@ this good enough for now; the chunk-mesh redesign (item 1) and item 3
     `Spawn`/`RestoreState` (teleport-style position sets). Verified: walking
     across steps/ramps looks smooth, user confirmed "good enough for now."
 
-13. **GPU-resident chunk-mesh render redesign (deferred perf item)** — **[IN PROGRESS - PRD underway]**
+13. **GPU-resident chunk-mesh render redesign (deferred perf item)** — **[DONE]**
     The big rendering-perf fix identified in the "Before Tier 4" review
-    above: TEF currently issues one `batcher.Draw` per static per frame
-    (~13k in a dense town plaza), where ClassicUO.Client bakes each chunk's
-    land+statics into persistent GPU vertex buffers once (`ChunkMesh`,
-    dirty-tracked) and a static frame just flips visibility/hue flags. This
-    is the ~3x FPS gap on identical content. Substantial enough to warrant
-    its own PRD when picked up (persistent per-chunk vertex/index buffers,
-    an `IsDirty` invalidation model tied to statics being added/removed - or
-    to entity-suppression overlays if the harvest-map-static mechanic lands
-    first, since that mutates a chunk's static set - and texture-bucketed
-    batched draws). Reference: `ChunkMesh.cs`, `GameScene.FillGameObjectList`,
-    `GameSceneDrawingSorting.AddTileToRenderList`. The cheap CPU-side wins
-    (baked `Drawable`/`HueVector`) are already done; this is the remaining
-    GPU-batching half. Also fold in tighter per-object screen-pixel culling
-    (real client's `GetViewPort`/`_minPixel`/`_maxPixel`) at the same time.
+    above: TEF used to issue one `batcher.Draw` per static per frame (~13k
+    in a dense town plaza). Replaced with `BlockMesh` (see
+    `Design/prd-chunk-mesh-render.md`): a persistent, texture-bucketed
+    CPU-side vertex array per 8x8 block for land + mesh-eligible statics,
+    fed to the GPU each frame via `Batcher2D.DrawBatch` with real GPU
+    depth-testing (`DepthStencilState`) replacing the old painter's-
+    algorithm draw order. Mouse picking was also decoupled from drawing -
+    land picking now reads cached per-tile info `BlockMesh` computed once
+    at build time instead of redoing the stretched-land neighbor lookup
+    every frame. **Measured result at the fountain plaza: ~350 FPS (from
+    a ~94-99 FPS baseline), GPU flushes=11/texSwitches=167 (from ~2,386
+    flushes pre-mesh).** Along the way, found and fixed a real depth-
+    sorting bug this redesign introduced (ground-level `Background`-
+    flagged statics like stone pavers losing the depth test against their
+    own land tile - same root cause as the "missing tiles along water/
+    shorelines" issue, so that's resolved too, not a separate bug).
+    Remaining, deliberately deferred: `BlockMesh` GPU/CPU resource
+    disposal isn't yet wired into `WorldMap.EvictFarBlocks`, so meshes for
+    blocks that fall out of the cache radius are never freed - a memory-
+    growth issue for long sessions, not a correctness/perf regression
+    today. Pick up when convenient.
 
 ## Tier 5 — reserved
 
@@ -497,7 +504,9 @@ a tree, click it, chop it, get wood" loop is real end to end, with a real
 UI counter surfacing it (the "Resources" panel), a saved/resumable session,
 and a bounded-memory world cache. Tier 4's lighting (directional shading +
 day/night ambient), app-shell completeness, and smooth Z transitions are
-also done - only the GPU chunk-mesh redesign (item 13) remains, currently
-being scoped into its own PRD. Point lights and day/night color are
-deliberately deferred to Tier 6 (reserved slot at Tier 5). Tier 6 last,
+also done, and the GPU chunk-mesh redesign (item 13) is now done as well
+(~3x FPS at the fountain plaza) - all of Tier 4 is complete except its
+deliberately-deferred `BlockMesh` eviction cleanup. Point lights and
+day/night color are deliberately deferred to Tier 6 (reserved slot at
+Tier 5). Tier 6 last,
 once Tier 5 exists and is scoped.

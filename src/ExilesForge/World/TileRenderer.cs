@@ -67,17 +67,8 @@ namespace TEF.World
 
         // Draw-call counters for the just-completed Draw() pass - debug/
         // perf-investigation only (see DebugHud), not used by any gameplay
-        // logic. Reset at the top of every Draw call. LandDrawCalls/
-        // StretchedLandDrawCalls no longer reflect actual batcher.Draw
-        // calls since Tier 4 #13 (land comes from BlockMesh) - they're now
-        // just "land tiles considered for picking this frame". MeshedBlockDraws
-        // is the real replacement metric (one BlockMesh.Draw call per
-        // touched block, each internally a handful of real GPU submissions
-        // via DrawBatch/Flush - see the debug HUD's GPU flushes/texSwitches
-        // line for the actual count).
-        public int LandDrawCalls { get; private set; }
+        // logic. Reset at the top of every Draw call.
         public int StaticDrawCalls { get; private set; }
-        public int StretchedLandDrawCalls { get; private set; }
         public int MeshedBlockDraws { get; private set; }
         public int MeshedLandQuads { get; private set; }
         public int MeshedStaticQuads { get; private set; }
@@ -103,9 +94,7 @@ namespace TEF.World
             _entityPick = default;
             _staticPick = default;
             _landPick = default;
-            LandDrawCalls = 0;
             StaticDrawCalls = 0;
-            StretchedLandDrawCalls = 0;
             MeshedBlockDraws = 0;
             MeshedLandQuads = 0;
             MeshedStaticQuads = 0;
@@ -218,7 +207,7 @@ namespace TEF.World
                         continue;
                     }
 
-                    DrawLandTile(batcher, map, assets, tx, ty, worldOffset);
+                    DrawLandTile(map, assets, tx, ty, worldOffset);
 
                     bool isPlayerTile = tx == centerX && ty == centerY;
 
@@ -239,78 +228,36 @@ namespace TEF.World
         }
 
         /// <summary>
-        /// Tier 4 #13: land is no longer drawn here - it comes from the
-        /// BlockMesh drawn upfront in Draw() (see that method). This now
-        /// only resolves land picking, which still needs the same
-        /// position/tileId math the mesh-building path does (kept here
-        /// rather than sharing code with BlockMesh, since picking runs
-        /// against the current view range's exact tiles every frame while
-        /// meshes are built once - see task list item 8, decoupling
-        /// picking into its own pass, for a cleaner long-term split).
+        /// Tier 4 #13 task 8: land no longer draws OR recomputes its own
+        /// position/stretch here - both now live entirely in BlockMesh
+        /// (built once per block). This just reads back the pick info
+        /// BlockMesh already cached at build time and runs the same diamond
+        /// hit test as before, instead of redoing TryBuildStretch's
+        /// up-to-11-neighbor lookup every frame for every visible tile
+        /// purely to answer "what's under the cursor".
         /// </summary>
         private void DrawLandTile(
-            UltimaBatcher2D batcher, WorldMap map, GameAssets assets,
+            WorldMap map, GameAssets assets,
             int tx, int ty, Vector2 worldOffset)
         {
-            if (!map.TryGetLand(tx, ty, out ushort tileId, out sbyte z))
+            int blockX = tx >> 3;
+            int blockY = ty >> 3;
+            int localX = tx & (BlockSize - 1);
+            int localY = ty & (BlockSize - 1);
+
+            var pick = map.GetOrBuildBlockMesh(blockX, blockY).GetLandPick(localX, localY);
+            if (!pick.HasLand)
             {
                 return;
             }
 
-            // Land graphics 0-2 are the "no-draw" void tiles (paved-over
-            // areas, cave interiors, etc.) - UO leaves them blank for statics
-            // to cover. Matches Land.AllowedToDraw (> 2).
-            if (tileId <= 2)
-            {
-                return;
-            }
+            var screenPos = new Vector2(pick.ScreenX, pick.ScreenY) - worldOffset;
 
-            float planarX = (tx - ty) * TileSize - TileSize;
-
-            // Rocky/mountain (and other textured) land is drawn from a TEXMAP
-            // stretched to its neighbors' corner heights, not from the flat
-            // land art - the art for these tiles is empty, which is why they
-            // showed as black gaps before. Mirrors Land.ApplyStretch +
-            // LandView.Draw's stretched branch: stretch only when the tile has
-            // a valid texmap AND its neighborhood isn't perfectly flat.
-            ushort texId = assets.Files.TileData.LandData[tileId].TexID;
-
-            if (texId != 0
-                && assets.Files.Texmaps.File.GetValidRefEntry(texId).Length > 0
-                && TryBuildStretch(map, tx, ty, z,
-                    out var yOffsets, out var nTop, out var nRight, out var nLeft, out var nBottom, out _))
-            {
-                ref readonly var texmap = ref assets.Texmaps.GetTexmap(texId);
-                if (texmap.Texture != null)
-                {
-                    // Planar Y (no Z baked in) - matches the position
-                    // BlockMesh's stretched quad is built at, for picking.
-                    float stretchedY = (tx + ty) * TileSize - TileSize;
-                    var stretchedPos = new Vector2(planarX, stretchedY) - worldOffset;
-
-                    StretchedLandDrawCalls++;
-
-                    // Diamond hit test at the un-stretched position - an
-                    // approximation for stretched tiles (their corners are
-                    // pushed by yOffsets), fine since land picking is
-                    // secondary to object picking.
-                    TestLandPick(assets, stretchedPos, tx, ty, tileId);
-                    return;
-                }
-            }
-
-            ref readonly var sprite = ref assets.Art.GetLand(tileId);
-            if (sprite.Texture == null)
-            {
-                return;
-            }
-
-            float flatY = (tx + ty) * TileSize - TileSize - (z << 2);
-            var screenPos = new Vector2(planarX, flatY) - worldOffset;
-
-            LandDrawCalls++;
-
-            TestLandPick(assets, screenPos, tx, ty, tileId);
+            // Diamond hit test at the un-stretched position - an
+            // approximation for stretched tiles (their corners are pushed by
+            // yOffsets), fine since land picking is secondary to object
+            // picking.
+            TestLandPick(assets, screenPos, tx, ty, pick.TileId);
         }
 
         /// <summary>
