@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
-namespace TEF.Core
+namespace UOA.Core
 {
     /// <summary>
     /// In-game day/night clock. Advances on the fixed simulation tick (see

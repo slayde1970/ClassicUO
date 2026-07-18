@@ -4,12 +4,12 @@ using System;
 using ClassicUO.Renderer;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
-using TEF.Assets;
-using TEF.Audio;
-using TEF.Input;
-using TEF.Scenes;
+using UOA.Assets;
+using UOA.Audio;
+using UOA.Input;
+using UOA.Scenes;
 
-namespace TEF.Core
+namespace UOA.Core
 {
     /// <summary>
     /// Application root. Modeled on ClassicUO.GameController
@@ -89,15 +89,14 @@ namespace TEF.Core
         }
 
         // Fires once on a clean Game.Exit()/window close, before shutdown -
-        // see external/FNA/src/Game.cs. Saves whatever session is active so
-        // a clean exit never loses progress (a crash/force-kill can still
-        // lose up to one autosave interval - see WorldScene.Update).
+        // see external/FNA/src/Game.cs. Lets the active scene flush any
+        // unsaved session state (WorldScene overrides OnHostExiting to save)
+        // so a clean exit never loses progress (a crash/force-kill can still
+        // lose up to one autosave interval - see WorldScene.Update). The
+        // engine host stays ignorant of any concrete game scene type.
         protected override void OnExiting(object sender, EventArgs args)
         {
-            if (Scenes.Current is WorldScene worldScene)
-            {
-                worldScene.SaveGame();
-            }
+            Scenes.Current?.OnHostExiting();
 
             base.OnExiting(sender, args);
         }

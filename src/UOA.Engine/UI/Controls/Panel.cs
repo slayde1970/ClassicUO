@@ -3,7 +3,7 @@
 using ClassicUO.Renderer;
 using Microsoft.Xna.Framework;
 
-namespace TEF.UI.Controls
+namespace UOA.UI.Controls
 {
     /// <summary>Solid-color background rectangle, using the renderer's 1x1 SolidColorTextureCache stretched to fill Bounds. A plain container otherwise - add a border/gump-art backing later if a themed look is wanted.</summary>
     public class Panel : Control

@@ -4,7 +4,7 @@ using System;
 using ClassicUO.Renderer;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
-using TEF.Core;
+using UOA.Core;
 
 namespace TEF.World
 {

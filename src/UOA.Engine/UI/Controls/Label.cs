@@ -3,7 +3,7 @@
 using ClassicUO.Renderer;
 using Microsoft.Xna.Framework;
 
-namespace TEF.UI.Controls
+namespace UOA.UI.Controls
 {
     /// <summary>Plain text control, auto-sized from its current Text each frame.</summary>
     public sealed class Label : Control

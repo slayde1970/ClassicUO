@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 using System;
-using TEF.Core;
+using UOA.Core;
+using TEF.Input;
 using TEF.Persistence;
 using TEF.Scenes;
 
@@ -50,6 +51,11 @@ namespace TEF
             }
 
             using var game = new GameController(settings);
+
+            // The engine's InputManager ships with no bindings (it's action-
+            // agnostic, Tier 4.5); the game installs its own default key map.
+            game.Input.InstallDefaults();
+
             game.Scenes.ChangeScene(new TitleScene(game));
             game.Run();
         }

@@ -3,9 +3,9 @@
 using System.Collections.Generic;
 using ClassicUO.Renderer;
 using Microsoft.Xna.Framework;
-using TEF.Input;
+using UOA.Input;
 
-namespace TEF.UI
+namespace UOA.UI
 {
     /// <summary>
     /// Owns the root-level controls (in Z order - last added draws on top),

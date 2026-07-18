@@ -1,6 +1,7 @@
 # PRD: UO Architect Engine Extraction (Tier 4.5)
 
-Status: **Design locked - not yet implemented.**
+Status: **In progress.** Step 1 (extract `UOA.Engine`) done and verified;
+steps 2-6 pending.
 
 > **Engine name: UO Architect Engine**, root namespace **`UOA`**. Assemblies
 > `UOA.Engine` (game-agnostic framework) and `UOA.World` (UO isometric-world
@@ -102,6 +103,8 @@ Engine/world files are renamed from `TEF.*` to `UOA.*`; the game keeps `TEF.*`.
 - `UI/{Control, UIManager, BackgroundImage}.cs`, `UI/Controls/{Label, Panel, Button}.cs`
 - `Assets/GameAssets.cs` → `UoContent` (UO file/atlas provider; engine-for-UO,
   and every prototype here is UO-art-based)
+- `Assets/LightColors.cs` (internal, used by `GameAssets` during asset load -
+  UO content infrastructure, not game code)
 - `Persistence/{ConfigManager, SaveManager}.cs` → generalized (4.3, 4.4)
 
 **→ `UOA.World` (namespace `UOA.World`):**
@@ -112,7 +115,8 @@ Engine/world files are renamed from `TEF.*` to `UOA.*`; the game keeps `TEF.*`.
 - `Scenes/{TitleScene, SpawnSelectScene, WorldScene}.cs`
 - `World/{PlayerEntity, Direction}.cs`, `World/Entities/*`, `HarvestSystem`
 - `Persistence/SaveData.cs` (its schema), a game-specific config type
-- `Input/GameAction.cs`, `UI/DebugHud.cs`, `Assets/LightColors.cs`, `Program.cs`
+- `Input/GameAction.cs` (+ `Input/InputActions.cs`, the game-side binding shim
+  added in step 1 - see 4.6), `UI/DebugHud.cs`, `Program.cs`
 
 ### 4.3 Config: layered, app-name-parameterized
 
@@ -192,9 +196,16 @@ any prototype get the same services without the engine knowing about any game.
 
 ## 5. Rollout (incremental, each step builds + runs + is visually verified)
 
-1. Create `UOA.Engine.csproj`; move the pure-engine files; rename their
-   `TEF.*` namespaces to `UOA.*`; fix `ExilesForge` usings. **Build + run -
-   must be visually identical to today.**
+1. **[DONE]** Create `UOA.Engine.csproj`; move the pure-engine files; rename
+   their `TEF.*` namespaces to `UOA.*`; fix `ExilesForge` usings. Build + run -
+   visually identical, user-verified. Two decouplings were required for the
+   engine to compile without a game reference (both done): `InputManager`
+   became action-agnostic (int-keyed registry; game keeps `GameAction` + a
+   `TEF.Input.InputActions` extension shim so call sites are unchanged - this
+   also completes most of step 6), and `GameController.OnExiting` now calls a
+   `Scene.OnHostExiting()` virtual hook that `WorldScene` overrides instead of
+   referencing `WorldScene` directly. `UOA.Engine` builds standalone with zero
+   game references.
 2. Create `UOA.World.csproj`; move the UO-map toolkit (namespace `UOA.World`).
    Build + run.
 3. Generalize config (4.3) and save (4.4); port TEF's schema onto the new

@@ -3,9 +3,9 @@
 using System.Collections.Generic;
 using ClassicUO.Renderer;
 using Microsoft.Xna.Framework;
-using TEF.Input;
+using UOA.Input;
 
-namespace TEF.UI
+namespace UOA.UI
 {
     /// <summary>
     /// Base of the lightweight control/gump system (Tier 2 #5). Position is

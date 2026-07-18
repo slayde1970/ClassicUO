@@ -6,7 +6,7 @@ using ClassicUO.Renderer;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 
-namespace TEF.UI
+namespace UOA.UI
 {
     /// <summary>
     /// A full-screen background image, scaled to fit entirely within the

@@ -2,10 +2,10 @@
 
 using System;
 using ClassicUO.Renderer;
-using TEF.Core;
-using TEF.Input;
+using UOA.Core;
+using UOA.Input;
 
-namespace TEF.Scenes
+namespace UOA.Scenes
 {
     /// <summary>
     /// Modeled on ClassicUO.Game.Scenes.Scene: same Load/Unload/Update/Draw
@@ -44,6 +44,17 @@ namespace TEF.Scenes
 
         /// <summary>Fixed-step simulation tick (see SimulationClock) - survival timers, resource respawn, etc. should hang off this, not Update's variable Delta.</summary>
         public virtual void FixedUpdate(float fixedDelta)
+        {
+        }
+
+        /// <summary>
+        /// Called once when the host is cleanly exiting (window close /
+        /// Game.Exit), before shutdown. A scene that owns unsaved session
+        /// state overrides this to flush it (e.g. WorldScene saves the game).
+        /// Lets the engine host trigger a save without knowing any concrete
+        /// game scene type (Tier 4.5).
+        /// </summary>
+        public virtual void OnHostExiting()
         {
         }
 

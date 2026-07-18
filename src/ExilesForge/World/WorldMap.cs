@@ -7,7 +7,7 @@ using System.Runtime.InteropServices;
 using ClassicUO.Assets;
 using ClassicUO.Renderer;
 using Microsoft.Xna.Framework;
-using TEF.Assets;
+using UOA.Assets;
 
 namespace TEF.World
 {

@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 
-namespace TEF.Input
+namespace UOA.Input
 {
     public enum MouseButton
     {
@@ -17,8 +17,15 @@ namespace TEF.Input
     /// Polling-based input layer. ClassicUO drives input off an SDL event
     /// filter (see ClassicUO.Client/GameController.cs HandleSdlEvent) because
     /// it needs precise double-click timing and raw text input for gumps.
-    /// TEF doesn't have a UI/text layer yet, so plain per-frame polling via
-    /// FNA's Keyboard/Mouse state - simpler, and enough to drive an action map.
+    /// UOA has no UI/text layer needing that yet, so plain per-frame polling
+    /// via FNA's Keyboard/Mouse state - simpler, and enough to drive an
+    /// action map.
+    ///
+    /// Actions are keyed by a plain <c>int</c>, not a game-specific enum, so
+    /// this stays engine-agnostic (Tier 4.5): each game defines its own action
+    /// enum and registers bindings via <see cref="Rebind"/>, casting the enum
+    /// to int. A thin game-side extension (e.g. TEF.Input.InputActions) gives
+    /// call sites the typed <c>IsActionDown(MyAction)</c> convenience back.
     /// </summary>
     /// <summary>A key, plus an optional required modifier (e.g. Ctrl+L) - implicitly convertible from a bare Keys so single-key bindings need no change at the call site.</summary>
     public readonly struct KeyBinding
@@ -37,28 +44,10 @@ namespace TEF.Input
 
     public sealed class InputManager
     {
-        private readonly Dictionary<GameAction, KeyBinding> _bindings = new()
-        {
-            [GameAction.MoveForward] = Keys.W,
-            [GameAction.MoveBack] = Keys.S,
-            [GameAction.StrafeLeft] = Keys.A,
-            [GameAction.StrafeRight] = Keys.D,
-            [GameAction.Sprint] = Keys.LeftShift,
-            [GameAction.Jump] = Keys.Space,
-            [GameAction.Interact] = Keys.E,
-            [GameAction.OpenInventory] = Keys.I,
-            [GameAction.OpenCraftingMenu] = Keys.C,
-            [GameAction.OpenCharacterMenu] = Keys.Tab,
-            [GameAction.QuickSave] = Keys.F5,
-            [GameAction.ToggleStatics] = Keys.F6,
-            [GameAction.ToggleMapStatics] = Keys.F7,
-            [GameAction.ToggleDebugInfo] = Keys.F8,
-            [GameAction.ToggleFpsCounter] = Keys.F9,
-            [GameAction.ToggleMenu] = Keys.Escape,
-            [GameAction.ToggleTerrainLighting] = new KeyBinding(Keys.L, Keys.LeftControl),
-            [GameAction.DebugAdvanceTime] = Keys.F10,
-            [GameAction.DebugToggleDepthTest] = Keys.F11,
-        };
+        // Keyed by (int)someGameActionEnum - the engine never names the actions
+        // itself. Starts empty; the game installs its bindings after
+        // construction (see the game's InputActions.InstallDefaults).
+        private readonly Dictionary<int, KeyBinding> _bindings = new();
 
         private KeyboardState _keyboard, _prevKeyboard;
         private MouseState _mouse, _prevMouse;
@@ -67,7 +56,7 @@ namespace TEF.Input
         public Point MouseDelta => new(_mouse.X - _prevMouse.X, _mouse.Y - _prevMouse.Y);
         public int ScrollDelta => _mouse.ScrollWheelValue - _prevMouse.ScrollWheelValue;
 
-        public void Rebind(GameAction action, KeyBinding binding) => _bindings[action] = binding;
+        public void Rebind(int action, KeyBinding binding) => _bindings[action] = binding;
 
         public void Update()
         {
@@ -81,15 +70,15 @@ namespace TEF.Input
         private static bool IsBindingDown(in KeyBinding binding, in KeyboardState state) =>
             state.IsKeyDown(binding.Key) && (binding.Modifier is not Keys modifier || state.IsKeyDown(modifier));
 
-        public bool IsActionDown(GameAction action) =>
+        public bool IsActionDown(int action) =>
             _bindings.TryGetValue(action, out var binding) && IsBindingDown(binding, _keyboard);
 
-        public bool IsActionPressed(GameAction action) =>
+        public bool IsActionPressed(int action) =>
             _bindings.TryGetValue(action, out var binding)
             && IsBindingDown(binding, _keyboard)
             && !IsBindingDown(binding, _prevKeyboard);
 
-        public bool IsActionReleased(GameAction action) =>
+        public bool IsActionReleased(int action) =>
             _bindings.TryGetValue(action, out var binding)
             && !IsBindingDown(binding, _keyboard)
             && IsBindingDown(binding, _prevKeyboard);

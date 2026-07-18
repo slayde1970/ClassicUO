@@ -3,7 +3,7 @@
 using System;
 using System.IO;
 using System.Text.Json;
-using TEF.Core;
+using UOA.Core;
 
 namespace TEF.Persistence
 {

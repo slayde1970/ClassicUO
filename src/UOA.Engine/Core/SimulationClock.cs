@@ -2,7 +2,7 @@
 
 using System;
 
-namespace TEF.Core
+namespace UOA.Core
 {
     /// <summary>
     /// Fixed-step accumulator, decoupled from the variable render frame rate

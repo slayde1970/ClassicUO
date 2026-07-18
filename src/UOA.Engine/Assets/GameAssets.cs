@@ -13,9 +13,9 @@ using ClassicUO.Renderer.Sounds;
 using ClassicUO.Renderer.Texmaps;
 using ClassicUO.Utility;
 using Microsoft.Xna.Framework.Graphics;
-using TEF.Core;
+using UOA.Core;
 
-namespace TEF.Assets
+namespace UOA.Assets
 {
     /// <summary>
     /// Owns every loaded UO data file and the GPU-side wrappers around it

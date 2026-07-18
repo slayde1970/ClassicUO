@@ -2,9 +2,9 @@
 
 using System;
 using Microsoft.Xna.Framework;
-using TEF.Input;
+using UOA.Input;
 
-namespace TEF.UI.Controls
+namespace UOA.UI.Controls
 {
     /// <summary>A clickable Panel with a centered-by-padding label. Sizes itself from the label text once at construction - if the text can change later, rebuild the button rather than mutating Text in place (keeps padding/sizing simple for this first pass).</summary>
     public sealed class Button : Panel

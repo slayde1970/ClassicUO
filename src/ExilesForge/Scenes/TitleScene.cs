@@ -4,11 +4,12 @@ using System;
 using System.IO;
 using ClassicUO.Renderer;
 using Microsoft.Xna.Framework;
-using TEF.Core;
-using TEF.Input;
+using UOA.Core;
+using UOA.Input;
+using UOA.Scenes;
 using TEF.Persistence;
-using TEF.UI;
-using TEF.UI.Controls;
+using UOA.UI;
+using UOA.UI.Controls;
 
 namespace TEF.Scenes
 {

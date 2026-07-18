@@ -2,7 +2,7 @@
 
 using System.Collections.Generic;
 
-namespace TEF.Assets
+namespace UOA.Assets
 {
     /// <summary>
     /// Trimmed port of ClassicUO's Game/Data/LightColors.cs. That version reads

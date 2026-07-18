@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
-namespace TEF.Core
+namespace UOA.Core
 {
     public static class Time
     {

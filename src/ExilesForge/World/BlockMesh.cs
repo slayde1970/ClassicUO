@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using ClassicUO.Renderer;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
-using TEF.Assets;
+using UOA.Assets;
 
 namespace TEF.World
 {

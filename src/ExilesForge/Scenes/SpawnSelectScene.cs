@@ -3,10 +3,11 @@
 using System.IO;
 using ClassicUO.Renderer;
 using Microsoft.Xna.Framework;
-using TEF.Core;
-using TEF.Input;
-using TEF.UI;
-using TEF.UI.Controls;
+using UOA.Core;
+using UOA.Input;
+using UOA.Scenes;
+using UOA.UI;
+using UOA.UI.Controls;
 
 namespace TEF.Scenes
 {

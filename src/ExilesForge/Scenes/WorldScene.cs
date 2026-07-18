@@ -5,11 +5,14 @@ using System.Collections.Generic;
 using ClassicUO.Renderer;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
-using TEF.Core;
+using UOA.Core;
+using UOA.Input;
+using UOA.Scenes;
 using TEF.Input;
 using TEF.Persistence;
+using UOA.UI;
+using UOA.UI.Controls;
 using TEF.UI;
-using TEF.UI.Controls;
 using TEF.World;
 using TEF.World.Entities;
 

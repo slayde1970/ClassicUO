@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
-namespace TEF.Core
+namespace UOA.Core
 {
     /// <summary>
     /// Minimal bootstrap settings needed to locate and parse the UO client

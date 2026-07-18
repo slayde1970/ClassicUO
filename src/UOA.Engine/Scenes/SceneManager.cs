@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 using ClassicUO.Renderer;
-using TEF.Input;
+using UOA.Input;
 
-namespace TEF.Scenes
+namespace UOA.Scenes
 {
     /// <summary>
     /// ClassicUO's GameController owns a single `Scene` field and swaps it

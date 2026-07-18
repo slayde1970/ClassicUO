@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 using System.Collections.Generic;
-using TEF.Assets;
+using UOA.Assets;
 
 namespace TEF.World
 {

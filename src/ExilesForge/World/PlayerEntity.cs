@@ -5,8 +5,9 @@ using ClassicUO.Assets;
 using ClassicUO.Renderer;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
-using TEF.Assets;
-using TEF.Core;
+using UOA.Assets;
+using UOA.Core;
+using UOA.Input;
 using TEF.Input;
 
 namespace TEF.World

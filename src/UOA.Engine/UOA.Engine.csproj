@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    UO Architect Engine (namespace UOA) - the game-agnostic framework layer
+    extracted from The Exile's Forge (Tier 4.5, see
+    ExilesForge/Design/prd-uoa-engine.md). Depends only on the shared ClassicUO
+    assemblies + FNA; must never reference a game project. TargetFramework,
+    LangVersion, etc. come from src/Directory.Build.props.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <AssemblyName>UOA.Engine</AssemblyName>
+    <RootNamespace>UOA</RootNamespace>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\external\FNA\FNA.Core.csproj" />
+    <ProjectReference Include="..\ClassicUO.Assets\ClassicUO.Assets.csproj" />
+    <ProjectReference Include="..\ClassicUO.Renderer\ClassicUO.Renderer.csproj" />
+    <ProjectReference Include="..\ClassicUO.IO\ClassicUO.IO.csproj" />
+    <ProjectReference Include="..\ClassicUO.Utility\ClassicUO.Utility.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -2,7 +2,7 @@
 
 using ClassicUO.Renderer;
 using Microsoft.Xna.Framework;
-using TEF.Core;
+using UOA.Core;
 using TEF.World;
 
 namespace TEF.UI

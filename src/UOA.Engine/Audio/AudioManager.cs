@@ -4,10 +4,10 @@ using System;
 using System.Collections.Generic;
 using ClassicUO.IO.Audio;
 using Microsoft.Xna.Framework.Audio;
-using TEF.Assets;
-using TEF.Core;
+using UOA.Assets;
+using UOA.Core;
 
-namespace TEF.Audio
+namespace UOA.Audio
 {
     /// <summary>
     /// Trimmed port of ClassicUO's Game/Managers/AudioManager.cs. The original
