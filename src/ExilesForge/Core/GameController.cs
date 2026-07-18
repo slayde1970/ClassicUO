@@ -133,7 +133,11 @@ namespace TEF.Core
 
         protected override void Draw(GameTime gameTime)
         {
-            GraphicsDevice.Clear(Color.Black);
+            // Also clears the depth buffer (Tier 4 #13 - real GPU depth
+            // testing for world occlusion, see Design/prd-chunk-mesh-render.md)
+            // - the single-Color Clear() overload only clears the color
+            // target, leaving stale depth values from the previous frame.
+            GraphicsDevice.Clear(ClearOptions.Target | ClearOptions.DepthBuffer, Color.Black, 1f, 0);
 
             Scenes.Draw(_batcher);
 

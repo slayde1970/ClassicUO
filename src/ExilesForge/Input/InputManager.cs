@@ -57,6 +57,7 @@ namespace TEF.Input
             [GameAction.ToggleMenu] = Keys.Escape,
             [GameAction.ToggleTerrainLighting] = new KeyBinding(Keys.L, Keys.LeftControl),
             [GameAction.DebugAdvanceTime] = Keys.F10,
+            [GameAction.DebugToggleDepthTest] = Keys.F11,
         };
 
         private KeyboardState _keyboard, _prevKeyboard;

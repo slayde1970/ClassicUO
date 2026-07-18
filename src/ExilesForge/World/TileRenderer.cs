@@ -42,7 +42,7 @@ namespace TEF.World
     /// </summary>
     public sealed class TileRenderer
     {
-        private const int TileSize = 22; // half-width/height of the 44x44 iso diamond, see GameObject.UpdateRealScreenPosition
+        internal const int TileSize = 22; // half-width/height of the 44x44 iso diamond, see GameObject.UpdateRealScreenPosition - internal so BlockMesh (Tier 4 #13) can share it
         private const int BlockSize = WorldMap.BlockSize;
 
         // Scratch buffer for the three-way (map statics + entities + player)
@@ -67,10 +67,20 @@ namespace TEF.World
 
         // Draw-call counters for the just-completed Draw() pass - debug/
         // perf-investigation only (see DebugHud), not used by any gameplay
-        // logic. Reset at the top of every Draw call.
+        // logic. Reset at the top of every Draw call. LandDrawCalls/
+        // StretchedLandDrawCalls no longer reflect actual batcher.Draw
+        // calls since Tier 4 #13 (land comes from BlockMesh) - they're now
+        // just "land tiles considered for picking this frame". MeshedBlockDraws
+        // is the real replacement metric (one BlockMesh.Draw call per
+        // touched block, each internally a handful of real GPU submissions
+        // via DrawBatch/Flush - see the debug HUD's GPU flushes/texSwitches
+        // line for the actual count).
         public int LandDrawCalls { get; private set; }
         public int StaticDrawCalls { get; private set; }
         public int StretchedLandDrawCalls { get; private set; }
+        public int MeshedBlockDraws { get; private set; }
+        public int MeshedLandQuads { get; private set; }
+        public int MeshedStaticQuads { get; private set; }
 
         /// <param name="entities">Live world entities (resource nodes, etc.) to interleave into the same pass, in the same tuple shape as map statics. May be null to skip entirely.</param>
         /// <param name="player">The player, drawn interleaved into the back-to-front pass on its own tile so statics on tiles in front of it can occlude it. May be null.</param>
@@ -96,6 +106,9 @@ namespace TEF.World
             LandDrawCalls = 0;
             StaticDrawCalls = 0;
             StretchedLandDrawCalls = 0;
+            MeshedBlockDraws = 0;
+            MeshedLandQuads = 0;
+            MeshedStaticQuads = 0;
 
             var playerTilePosition = player.WorldPosition;
             int centerX = (int)Math.Floor(playerTilePosition.X);
@@ -122,12 +135,65 @@ namespace TEF.World
             float playerIsoY = (playerTilePosition.X + playerTilePosition.Y) * TileSize - (player.Z * 4f) - TileSize;
             var isoOrigin = new Vector2(playerIsoX, playerIsoY);
 
+            // Tier 4 #13: pixel-snapped, not sub-pixel - see
+            // Design/prd-chunk-mesh-render.md. Batcher2D.DrawBatch (used to
+            // feed a BlockMesh's prebuilt vertex array each frame) only
+            // accepts a whole-pixel camera offset, matching the real
+            // client's own actual pixel-snapped camera (_offset is int in
+            // GameSceneDrawingSorting.cs). worldOffset folds screenCenterOffset
+            // in BEFORE rounding (not isoOrigin alone) so this is correct
+            // even if the viewport has an odd width/height (a fractional
+            // screenCenterOffset) - rounding isoOrigin alone would leave a
+            // sub-pixel remainder in that case, jittering meshed content
+            // (which can only take a whole-pixel offset) against
+            // individually-drawn content (player, unmeshed statics) by up
+            // to 1px. screenCenterOffset itself is also rounded below so
+            // the player (which never subtracts isoOrigin, see its own
+            // draw) stays in the same whole-pixel space as everything else.
+            screenCenterOffset.X = MathF.Round(screenCenterOffset.X);
+            screenCenterOffset.Y = MathF.Round(screenCenterOffset.Y);
+
+            var worldOffset = isoOrigin - screenCenterOffset;
+            worldOffset.X = MathF.Round(worldOffset.X);
+            worldOffset.Y = MathF.Round(worldOffset.Y);
+
             int x0 = centerX - viewRangeInTiles;
             int x1 = centerX + viewRangeInTiles;
             int y0 = centerY - viewRangeInTiles;
             int y1 = centerY + viewRangeInTiles;
 
             entities?.Rebuild(x0, y0, x1, y1);
+
+            // Tier 4 #13: land now comes from a persistent, texture-bucketed
+            // BlockMesh per touched 8x8 block, not a per-tile Draw() call
+            // (see BlockMesh's doc comment). Real depth-testing (see
+            // WorldScene.Draw's SetStencil) means submission ORDER no
+            // longer matters for correctness, so drawing every touched
+            // block's land upfront - before the per-tile statics/player
+            // loop below - is safe; the two are just independently ordered
+            // draw calls the GPU depth-tests against each other, not a
+            // painter's-algorithm sequence anymore. A block's own iso
+            // "diamond" footprint may draw a little land beyond the exact
+            // view diamond at its edges - harmless, minor overdraw, same
+            // as the real client's chunk-mesh approach.
+            int blockX0 = Math.Max(0, x0) >> 3;
+            int blockX1 = Math.Max(0, x1) >> 3;
+            int blockY0 = Math.Max(0, y0) >> 3;
+            int blockY1 = Math.Max(0, y1) >> 3;
+            int meshOffsetX = (int)worldOffset.X;
+            int meshOffsetY = (int)worldOffset.Y;
+
+            for (int by = blockY0; by <= blockY1; by++)
+            {
+                for (int bx = blockX0; bx <= blockX1; bx++)
+                {
+                    var blockMesh = map.GetOrBuildBlockMesh(bx, by);
+                    blockMesh.Draw(batcher, meshOffsetX, meshOffsetY, drawStatics);
+                    MeshedBlockDraws++;
+                    MeshedLandQuads += blockMesh.LandQuadCount;
+                    MeshedStaticQuads += blockMesh.StaticQuadCount;
+                }
+            }
 
             // The player is drawn when the pass reaches its tile. A mobile
             // sorts one step above same-Z statics on its tile (Chunk.
@@ -152,7 +218,7 @@ namespace TEF.World
                         continue;
                     }
 
-                    DrawLandTile(batcher, map, assets, tx, ty, isoOrigin, screenCenterOffset);
+                    DrawLandTile(batcher, map, assets, tx, ty, worldOffset);
 
                     bool isPlayerTile = tx == centerX && ty == centerY;
 
@@ -161,7 +227,7 @@ namespace TEF.World
                     // wholesale the way the old drawStatics-off branch did, or
                     // entities/the player would vanish along with map statics.
                     DrawStaticsAt(
-                        batcher, map, assets, entities, drawStatics, tx, ty, isoOrigin, screenCenterOffset,
+                        batcher, map, assets, entities, drawStatics, tx, ty, worldOffset,
                         isPlayerTile ? player : null, playerPriorityZ, screenCenterOffset, animatedStatics);
                 }
             }
@@ -172,9 +238,19 @@ namespace TEF.World
             tilePick = _staticPick.Kind != PickKind.None ? _staticPick : _landPick;
         }
 
+        /// <summary>
+        /// Tier 4 #13: land is no longer drawn here - it comes from the
+        /// BlockMesh drawn upfront in Draw() (see that method). This now
+        /// only resolves land picking, which still needs the same
+        /// position/tileId math the mesh-building path does (kept here
+        /// rather than sharing code with BlockMesh, since picking runs
+        /// against the current view range's exact tiles every frame while
+        /// meshes are built once - see task list item 8, decoupling
+        /// picking into its own pass, for a cleaner long-term split).
+        /// </summary>
         private void DrawLandTile(
             UltimaBatcher2D batcher, WorldMap map, GameAssets assets,
-            int tx, int ty, Vector2 isoOrigin, Vector2 screenCenterOffset)
+            int tx, int ty, Vector2 worldOffset)
         {
             if (!map.TryGetLand(tx, ty, out ushort tileId, out sbyte z))
             {
@@ -202,31 +278,16 @@ namespace TEF.World
             if (texId != 0
                 && assets.Files.Texmaps.File.GetValidRefEntry(texId).Length > 0
                 && TryBuildStretch(map, tx, ty, z,
-                    out var yOffsets, out var nTop, out var nRight, out var nLeft, out var nBottom))
+                    out var yOffsets, out var nTop, out var nRight, out var nLeft, out var nBottom, out _))
             {
                 ref readonly var texmap = ref assets.Texmaps.GetTexmap(texId);
                 if (texmap.Texture != null)
                 {
-                    // Planar Y (no Z baked in) - DrawStretchedLand applies each
-                    // corner's own height via yOffsets.
+                    // Planar Y (no Z baked in) - matches the position
+                    // BlockMesh's stretched quad is built at, for picking.
                     float stretchedY = (tx + ty) * TileSize - TileSize;
-                    var stretchedPos = new Vector2(planarX, stretchedY) - isoOrigin + screenCenterOffset;
+                    var stretchedPos = new Vector2(planarX, stretchedY) - worldOffset;
 
-                    var landHue = new Vector3(0f, ShaderHueTranslator.SHADER_LAND, 1f);
-
-                    batcher.DrawStretchedLand(
-                        texmap.Texture,
-                        stretchedPos,
-                        texmap.UV,
-                        ref yOffsets,
-                        ref nTop,
-                        ref nRight,
-                        ref nLeft,
-                        ref nBottom,
-                        landHue,
-                        0f
-                    );
-                    LandDrawCalls++;
                     StretchedLandDrawCalls++;
 
                     // Diamond hit test at the un-stretched position - an
@@ -245,15 +306,8 @@ namespace TEF.World
             }
 
             float flatY = (tx + ty) * TileSize - TileSize - (z << 2);
-            var screenPos = new Vector2(planarX, flatY) - isoOrigin + screenCenterOffset;
+            var screenPos = new Vector2(planarX, flatY) - worldOffset;
 
-            batcher.Draw(
-                sprite.Texture,
-                screenPos,
-                sprite.UV,
-                ShaderHueTranslator.GetHueVector(0),
-                0f
-            );
             LandDrawCalls++;
 
             TestLandPick(assets, screenPos, tx, ty, tileId);
@@ -300,7 +354,7 @@ namespace TEF.World
         /// </summary>
         private void DrawStaticsAt(
             UltimaBatcher2D batcher, WorldMap map, GameAssets assets, EntityRenderSystem entities, bool drawMapStatics,
-            int tx, int ty, Vector2 isoOrigin, Vector2 screenCenterOffset,
+            int tx, int ty, Vector2 worldOffset,
             PlayerEntity player, int playerPriorityZ, Vector2 playerScreenCenter, AnimatedStatics animatedStatics)
         {
             // Map statics are the only thing gated by drawMapStatics (the F6/F7
@@ -392,16 +446,31 @@ namespace TEF.World
 
                 float drawX = planarX - offX;
                 float drawY = baseY - (s.Z << 2) - offY;
-                var screenPos = new Vector2(drawX, drawY) - isoOrigin + screenCenterOffset;
+                var screenPos = new Vector2(drawX, drawY) - worldOffset;
 
-                batcher.Draw(
-                    sprite.Texture,
-                    screenPos,
-                    sprite.UV,
-                    s.HueVector,
-                    0f
-                );
-                StaticDrawCalls++;
+                // Tier 4 #13: a mesh-eligible MAP static (EntityId == 0, not
+                // animated/foliage/tree/rock) is already baked into this
+                // block's BlockMesh and drawn from there - skip the
+                // individual draw here to avoid double-drawing it, but
+                // still resolve picking below (not yet decoupled from
+                // drawing - see task list item 8). Entity-sourced statics
+                // and mesh-excluded map statics (animated statics in
+                // particular, since their UV changes every frame) still
+                // need their own per-object draw call every frame, exactly
+                // as before.
+                bool isBakedIntoMesh = s.EntityId == 0 && !StaticMeshFilter.IsExcludedFromMesh(assets, s.Graphic);
+
+                if (!isBakedIntoMesh)
+                {
+                    batcher.Draw(
+                        sprite.Texture,
+                        screenPos,
+                        sprite.UV,
+                        s.HueVector,
+                        DepthKey.Compute(tx, ty, s.PriorityZ)
+                    );
+                    StaticDrawCalls++;
+                }
 
                 TestStaticPick(assets, s, animatedGraphic, screenPos, sprite.UV.Width, sprite.UV.Height, tx, ty);
             }
@@ -499,10 +568,13 @@ namespace TEF.World
         /// ClassicUO.Client's Land.ApplyStretch. Returns false for a locally
         /// flat tile, in which case the caller falls back to flat art.
         /// </summary>
-        private static bool TryBuildStretch(
+        // internal (not private) so BlockMesh (Tier 4 #13) can reuse this
+        // exact port instead of duplicating it.
+        internal static bool TryBuildStretch(
             WorldMap map, int x, int y, sbyte z,
             out UltimaBatcher2D.YOffsets yOffsets,
-            out Vector3 normalTop, out Vector3 normalRight, out Vector3 normalLeft, out Vector3 normalBottom)
+            out Vector3 normalTop, out Vector3 normalRight, out Vector3 normalLeft, out Vector3 normalBottom,
+            out sbyte averageZ)
         {
             //  _____ _____
             // | top | rig |
@@ -521,6 +593,12 @@ namespace TEF.World
                 Left = zLeft * 4,
                 Bottom = zBottom * 4,
             };
+
+            // Matches Land.ApplyStretch's AverageZ - the pick-of-two-diagonals
+            // average used (among other things) as this tile's depth-sort Z.
+            averageZ = Math.Abs(zTop - zBottom) <= Math.Abs(zLeft - zRight)
+                ? (sbyte)((zTop + zBottom) >> 1)
+                : (sbyte)((zLeft + zRight) >> 1);
 
             //  _____ _____ _____ _____
             // |     | t10 | t20 |     |

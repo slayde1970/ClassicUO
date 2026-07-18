@@ -60,6 +60,11 @@ namespace TEF.World
         private readonly Dictionary<long, MapBlock?> _blockCache = new();
         private readonly Dictionary<long, List<StaticTile>[]> _staticCache = new();
 
+        // Tier 4 #13 - persistent, texture-bucketed land vertex data per
+        // block; see BlockMesh's own doc comment. Same key scheme as the
+        // caches above.
+        private readonly Dictionary<long, BlockMesh> _blockMeshes = new();
+
         // Cheap early-out for EvictFarBlocks: it only actually walks the
         // caches when the player's own block changes, so it's effectively
         // free on the vast majority of frames.
@@ -192,6 +197,22 @@ namespace TEF.World
 
             _staticCache[key] = cells;
             return cells;
+        }
+
+        /// <summary>Builds (once, lazily) or returns the cached BlockMesh for a block - Tier 4 #13.</summary>
+        public BlockMesh GetOrBuildBlockMesh(int blockX, int blockY)
+        {
+            long key = ((long)blockX << 32) | (uint)blockY;
+
+            if (_blockMeshes.TryGetValue(key, out var mesh))
+            {
+                return mesh;
+            }
+
+            mesh = new BlockMesh();
+            mesh.Build(this, _assets, blockX, blockY);
+            _blockMeshes[key] = mesh;
+            return mesh;
         }
 
         public List<StaticTile> GetStaticsAt(int x, int y)
@@ -462,11 +483,24 @@ namespace TEF.World
         /// <summary>
         /// Whether a static graphic should be rendered at all. Ported from
         /// ClassicUO.Client's GameObject.CanBeDrawn - it filters out the
-        /// "nodraw" placeholder statics (detected mainly by their tiledata
-        /// name starting with "nodraw", plus a handful of hardcoded graphic
-        /// ids and the NoDiagonal flag) that the map data uses as spacers.
-        /// Client-only special cases (gargoyle race, pre-6.0.14.4 easel) are
-        /// dropped since TEF has no player-race or legacy-version handling.
+        /// "nodraw" placeholder statics (detected by their tiledata name
+        /// starting with "nodraw", plus a handful of hardcoded graphic ids)
+        /// that the map data uses as spacers. Client-only special cases
+        /// (gargoyle race, pre-6.0.14.4 easel) are dropped since TEF has no
+        /// player-race or legacy-version handling.
+        ///
+        /// Does NOT check the NoDiagonal flag, unlike the real client's
+        /// literal logic - that flag has produced two confirmed false
+        /// positives on legitimate decorative statics in this project
+        /// (large tree graphics in Tier 1; fountain-plaza lamp posts found
+        /// during the Tier 4 #13 chunk-mesh work, confirmed by bypassing
+        /// the check and watching them reappear). The tree case was worked
+        /// around narrowly (entity-sourced tiles only); the lamp-post case
+        /// is a plain MAP static, so a per-instance workaround isn't
+        /// possible here - dropping the check entirely is the fix, since
+        /// its intended purpose (hiding invisible "nodraw" placeholder
+        /// spacers) is already covered by the name-prefix check below.
+        ///
         /// Baked into StaticTile.Drawable once here (at block-load time)
         /// rather than recomputed by TileRenderer every frame - this filter
         /// only ever depends on the graphic id, which never changes for a
@@ -513,7 +547,7 @@ namespace TEF.World
                 return false;
             }
 
-            return !data.IsNoDiagonal;
+            return true;
         }
     }
 }

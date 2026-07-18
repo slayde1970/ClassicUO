@@ -227,6 +227,14 @@ namespace TEF.World
                 return;
             }
 
+            // Matches Chunk.AddGameObject's mobile priority (Z + 1) and the
+            // same DepthKey formula TileRenderer writes for land/statics -
+            // see Design/prd-chunk-mesh-render.md section 4.4. Tile-floored
+            // (no sub-tile offset nudge yet, per that section's decision).
+            int tileX = (int)MathF.Floor(WorldPosition.X);
+            int tileY = (int)MathF.Floor(WorldPosition.Y);
+            float depth = DepthKey.Compute(tileX, tileY, Z + 1);
+
             batcher.Draw(
                 sprite.Texture,
                 localOrigin + screenCenterOffset,
@@ -236,7 +244,7 @@ namespace TEF.World
                 Vector2.Zero,
                 1f,
                 mirror ? SpriteEffects.FlipHorizontally : SpriteEffects.None,
-                0f
+                depth
             );
         }
 

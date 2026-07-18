@@ -58,7 +58,7 @@ namespace TEF.UI
 
                 string timeLine = $"Time: Day {clock.Day}  {clock.Hour12:D2}:{clock.Minute:D2} {clock.MeridiemTag}";
                 string cacheLine = $"Blocks cached: {map.CachedBlockCount}";
-                string drawLine = $"Draws: land={tiles.LandDrawCalls} static={tiles.StaticDrawCalls} stretched={tiles.StretchedLandDrawCalls}";
+                string drawLine = $"Draws: static={tiles.StaticDrawCalls} meshedBlocks={tiles.MeshedBlockDraws} meshLand={tiles.MeshedLandQuads} meshStatic={tiles.MeshedStaticQuads}";
                 string gpuLine = $"GPU: flushes={worldFlushesDone} texSwitches={worldTextureSwitches}";
 
                 block = tileLine + "\n" + entityLine + "\n" + timeLine + "\n" + cacheLine + "\n" + drawLine + "\n" + gpuLine;

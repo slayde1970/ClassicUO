@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using ClassicUO.Renderer;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using TEF.Core;
 using TEF.Input;
 using TEF.Persistence;
@@ -58,6 +59,16 @@ namespace TEF.Scenes
 
         private const int MapIndex = 0;
 
+        // Tier 4 #13 - tried CompareFunction.GreaterEqual here (reasoning
+        // that DepthKey.Compute assigns LARGER values to things meant to
+        // draw later/in front) to explain a ground-level-static (stone
+        // pavers) rendering bug under the default LessEqual - but
+        // GreaterEqual made EVERYTHING fail to render (worse, not better),
+        // so that reasoning was wrong somewhere. Reverted to Default
+        // (LessEqual) - see the still-open paver investigation in
+        // next-steps.md/PRD notes for the real root cause, not yet found.
+        private static readonly DepthStencilState WorldDepthStencilState = DepthStencilState.Default;
+
         // Tree/stump graphics for the debug Harvestables spawned in Load() -
         // a stand-in for a real world-populate step; harvested by clicking
         // (mouse-picking) them.
@@ -74,6 +85,7 @@ namespace TEF.Scenes
         private bool _drawStatics = true;
         private bool _drawMapStatics = true; // F7 - independent of F6, entities always draw regardless of either
         private bool _terrainLightingEnabled = true; // Ctrl+L - for comparing stretched-land shading on/off
+        private bool _depthTestEnabled = true; // F11 - A/B toggle for the Tier 4 #13 GPU depth-buffer work
 
         // What the cursor was over, produced by Draw and consumed on the next
         // frame's Update (one-frame lag - see PickResult). Tracked separately
@@ -323,6 +335,11 @@ namespace TEF.Scenes
                 _terrainLightingEnabled = !_terrainLightingEnabled;
             }
 
+            if (input.IsActionPressed(GameAction.DebugToggleDepthTest))
+            {
+                _depthTestEnabled = !_depthTestEnabled;
+            }
+
             if (input.IsActionPressed(GameAction.ToggleDebugInfo))
             {
                 _hud.ShowDebugInfo = !_hud.ShowDebugInfo;
@@ -433,6 +450,17 @@ namespace TEF.Scenes
             batcher.SetBrightlight(_terrainLightingEnabled ? TerrainShadowIntensity : 0f);
             batcher.SetLightContrastBoost(_terrainLightingEnabled ? TerrainLightContrastBoost : 0f);
 
+            // Real GPU depth-testing for world occlusion (Tier 4 #13 - see
+            // Design/prd-chunk-mesh-render.md). Every world-pass draw now
+            // writes a DepthKey-computed Z; this is an isolated first step
+            // (draw order is UNCHANGED below) specifically to verify the
+            // depth-key formula/DepthStencilState direction agrees with the
+            // existing, already-correct draw-order occlusion before any
+            // mesh/reordering work builds on top of it. Reset to the plain
+            // 2D default after End() so HUD/UI (drawn after) aren't
+            // depth-tested.
+            batcher.SetStencil(_depthTestEnabled ? WorldDepthStencilState : null);
+
             // Camera only handles zoom/peek, not centering (world (0,0) maps
             // to screen (0,0), the viewport's top-left) - so every world-space
             // draw needs the viewport's center added explicitly to appear
@@ -450,6 +478,7 @@ namespace TEF.Scenes
                 _animatedStatics, _drawStatics && _drawMapStatics);
 
             batcher.End();
+            batcher.SetStencil(null);
 
             // Snapshot right after End() flushes the world pass - Batcher2D
             // resets both counters on every Begin(), and several more

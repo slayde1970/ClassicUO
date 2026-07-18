@@ -472,6 +472,23 @@ temporarily hides/replaces a map static (chopped-down rocks, mined ore
 veins, a wall knocked down and rebuilt, etc.), so it's worth designing once
 generally rather than special-casing trees specifically when the time comes.
 
+### Player building system (claim land, build houses/gardens)
+
+User's stated intent, not designed yet: eventually let players claim a
+plot of land and build on it - houses, gardens, etc. Explicitly **not**
+planning to let players terraform land tiles themselves; **tree removal**
+is the one exception expected (chopping down a map-static tree to clear
+space for building ties directly into the harvest-map-static mechanic
+above - "destroy the entity, don't respawn it" is presumably the building-
+clearance case, vs. the gathering case's respawn-after-timer behavior, so
+the two may end up sharing the same suppression mechanism with a different
+terminal outcome). Also directly relevant to `Design/prd-chunk-mesh-render.md`
+section 4.6: that PRD's dirty-invalidation hook is deliberately shaped so
+"a static gets added/removed" (a placed building, a cleared tree) can mark
+the owning block's mesh dirty later, once this system exists. No further
+design done here - flagging so it isn't forgotten and so the chunk-mesh
+work doesn't accidentally assume the map is permanently read-only.
+
 ## Recommended order
 
 Tier 1, Tier 2, and all of Tier 3 (game clock, persistence + title screen,
