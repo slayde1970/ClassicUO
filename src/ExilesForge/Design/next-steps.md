@@ -398,6 +398,41 @@ this good enough for now; the chunk-mesh redesign (item 1) and item 3
     growth issue for long sessions, not a correctness/perf regression
     today. Pick up when convenient.
 
+## Tier 4.5 — Forge Framework extraction
+
+Full design: `Design/prd-forge-framework.md` (**design locked, not yet
+implemented**). Rationale: the user wants to prototype several game ideas on
+the same ClassicUO shared assemblies before settling on a final design. Most
+of `ExilesForge/` is already game-agnostic; this tier draws the seam between
+"reusable engine" and "this game" and enforces the dependency direction so
+multiple prototypes share one evolving foundation. TEF becomes the framework's
+first consumer with no user-visible behavior change.
+
+Locked decisions (via design discussion): **separate assemblies** (compiler-
+enforced boundary), a **`Forge.World`** module for the UO isometric-world
+toolkit sitting above **`Forge.Engine`**, and a **participant/section save
+registry** (each game/system adds save data with zero engine changes). Engine
+name is a placeholder (`Forge.*`) - pick a game-neutral name before starting.
+
+16. **Split out `Forge.Engine` + `Forge.World` assemblies** — move the game-
+    agnostic host/scenes/input/UI/audio/UO-content/config/save into
+    `Forge.Engine`; the UO map reader / `TileRenderer` / `BlockMesh` / camera /
+    depth / picking / day-night into `Forge.World`. Rename `TEF.*` → `Forge.*`
+    there; `ExilesForge` references both. Verify TEF runs identically.
+17. **Layered config + participant/section save** — `ConfigManager<TConfig>`
+    (engine section + per-game section, app-name-parameterized), and a
+    `SaveManager` driven by registered `ISaveParticipant`s. Port TEF's schema
+    onto both.
+18. **UI gump parity + script-ready seam** — extend `UIManager` with CUO-style
+    window management (named/typed lookup, modal/focus stack, `BringToFront`,
+    dragging, open/close), plus a `ControlFactory` + string-addressable
+    properties/events + `IScriptHost` interface so a Lua/TS layer can drive the
+    UI later without re-architecting. No interpreter this phase. Also move the
+    game action set onto a string/int **input binding registry** (out of the
+    engine).
+
+(See the PRD's section 5 for the incremental, verify-each-step rollout order.)
+
 ## Tier 5 — reserved
 
 Not yet scoped - the numbering gap before Tier 6 is intentional, not a

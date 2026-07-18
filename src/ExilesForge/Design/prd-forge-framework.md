@@ -1,0 +1,233 @@
+# PRD: Forge Framework Extraction (Tier 4.5)
+
+Status: **Design locked - not yet implemented.**
+
+> Working names `Forge.Engine` / `Forge.World` are placeholders. The engine
+> should get a **game-neutral name** before implementation starts, since it
+> will be referenced from every future prototype and "Forge" is literally in
+> *The Exile's Forge*'s title. Candidates: `Loom`, `Anvil`, `Aether`, etc.
+> Pick one and global-replace before step 1. This doc uses `Forge.*`
+> throughout as a stand-in.
+
+## 1. Problem
+
+The user wants to prototype **several** game ideas before settling on a final
+design, all built on the same ClassicUO shared assemblies (`ClassicUO.Assets`,
+`.Renderer`, `.IO`, `.Utility`, FNA). Today everything - engine plumbing and
+The Exile's Forge gameplay - lives in a single `ExilesForge` project under
+namespace `TEF`. Starting a second prototype would mean copy-pasting or
+cross-referencing that blob, with no enforced boundary between "reusable
+engine" and "this game."
+
+In practice most of `ExilesForge/` is **already** game-agnostic - the host,
+scene stack, input mapping, audio, the UI/gump system, config/save mechanisms,
+and the UO isometric-world renderer are all reusable. The work here is not to
+*write* a framework but to **draw the seam** between engine and game and
+**enforce the dependency direction** (game depends on engine, never the
+reverse) so multiple prototypes can share one evolving foundation.
+
+## 2. Goals
+
+- Extract a reusable, **game-agnostic** framework into its own assembly(ies)
+  that any number of prototypes can reference, with the engine/game boundary
+  enforced by the compiler (separate assemblies), not by convention.
+- `ExilesForge` becomes the **first consumer** of the framework - the best
+  possible test that the seam is in the right place - with no user-visible
+  behavior change (same rendering, same UI, same save/config).
+- Provide the extendability the user called out explicitly:
+  - **Config**: a default/engine config plus a per-game section, each game
+    supplying its own settings type without editing the engine.
+  - **Save**: each game (and each system within a game) adds its own custom
+    save data with zero engine changes.
+  - **UI/gumps**: an extendable, flexible control/gump system with
+    ClassicUO-style window management (named lookup, modal/focus, z-order,
+    dragging, open/close), exposed to scenes as a clean UI layer.
+  - **Scripting-readiness**: the UI is built so a script layer (Lua/TS/etc.)
+    can drive it *later* without re-architecting - designed for now, not
+    implemented now.
+- Do it **incrementally**: every step independently builds, runs, and is
+  visually verified (the project's standard verify loop). No big-bang rewrite.
+
+## 3. Non-goals (explicitly deferred)
+
+- **No scripting interpreter is written this phase.** We add the *seam*
+  (`ControlFactory` + string-addressable properties/events + `IScriptHost`
+  interface) so a VM can be bolted on additively later. Choosing and wiring an
+  actual Lua/JS engine is a separate future item. (Leaning MoonSharp/Lua -
+  pure C#, no native deps, sandboxable - when the time comes.)
+- **No second prototype is built this phase.** This only extracts and proves
+  the framework against TEF.
+- **No gray-zone speculative extraction.** The generic entity registry
+  (`EntityWorld`/`Components`) is ECS-ish scaffolding that *might* be reusable,
+  but until a second prototype actually needs it, it stays in the game
+  (rule-of-three). Real reuse pulls code up; we don't pre-abstract for a
+  consumer that doesn't exist.
+- **No feature work.** This is a pure structural refactor plus the three
+  extendability mechanisms; no new gameplay, no new rendering.
+
+## 4. Design
+
+### 4.1 Layering and dependency direction
+
+Three layers above the shared ClassicUO libs, dependencies pointing **up only**:
+
+```
+ClassicUO.Assets / .Renderer / .IO / .Utility + FNA
+        ▲
+   Forge.Engine     game-agnostic: host, scenes, input, UI/gumps, audio,
+        ▲                          UO content provider, config, save, script seam
+   Forge.World      UO isometric-world toolkit: map reader, TileRenderer,
+        ▲                          BlockMesh, camera, depth, picking, day/night
+   ExilesForge      the game: concrete scenes, gameplay, its save/config schema
+   <NextPrototype>  another game: references Forge.Engine (+ Forge.World if it
+                                   uses a UO map)
+```
+
+`Forge.Engine` **must never** reference a game type. Separate assemblies make
+that a compile error, not a code-review nicety. `Forge.World` sits above the
+engine so a pure-UI or non-tile prototype can reference only `Forge.Engine`.
+
+### 4.2 What moves where (from the current file layout)
+
+**→ `Forge.Engine`:**
+- `Core/GameController.cs` → `GameHost` (batcher, graphics, sim/world clock,
+  service wiring; owns only engine services)
+- `Core/{Time, SimulationClock, WorldClock}.cs`
+- `Scenes/{Scene, SceneManager}.cs` + per-scene `Camera`
+- `Input/InputManager.cs` (the `GameAction` enum does **not** come along - see 4.6)
+- `Audio/AudioManager.cs`
+- `UI/{Control, UIManager, BackgroundImage}.cs`, `UI/Controls/{Label, Panel, Button}.cs`
+- `Assets/GameAssets.cs` → `UoContent` (UO file/atlas provider; engine-for-UO,
+  and every prototype here is UO-art-based)
+- `Persistence/{ConfigManager, SaveManager}.cs` → generalized (4.3, 4.4)
+
+**→ `Forge.World`:**
+- `World/{WorldMap, TileRenderer, BlockMesh, DepthKey, StaticMeshFilter,
+  PickResult, AnimatedStatics, DayNightOverlay}.cs`
+
+**Stays in `ExilesForge`:**
+- `Scenes/{TitleScene, SpawnSelectScene, WorldScene}.cs`
+- `World/{PlayerEntity, Direction}.cs`, `World/Entities/*`, `HarvestSystem`
+- `Persistence/SaveData.cs` (its schema), a game-specific config type
+- `Input/GameAction.cs`, `UI/DebugHud.cs`, `Assets/LightColors.cs`, `Program.cs`
+
+### 4.3 Config: layered, app-name-parameterized
+
+Split today's sealed `GameSettings` into engine-owned `EngineSettings` (UO
+dir, client version, FPS, resolution, volume, keybinds) plus a game section.
+Manager becomes generic and app-name-parameterized:
+
+```
+ConfigManager<TConfig>   where TConfig exposes an EngineSettings Engine { get; }
+```
+
+Writes `%AppData%/<AppId>/config.json`, where `<AppId>` is supplied by the game
+(no more hardcoded `"ExilesForge"`). `ConfigManager<TefConfig>` for TEF; each
+prototype supplies its own `TConfig` embedding `EngineSettings`. Same
+null-on-missing/parse-fail contract as today.
+
+### 4.4 Save: participant/section registry
+
+Replace the single sealed `SaveData` DTO with a section registry. Each system
+that has persistent state implements:
+
+```
+interface ISaveParticipant
+{
+    string Section { get; }              // e.g. "engine.clock", "world.entities", "game.inventory"
+    void Write(Utf8JsonWriter writer);
+    void Read(JsonElement section);
+}
+```
+
+`SaveManager` owns a single JSON document `{ section -> payload }`, iterating
+registered participants to write, and dispatching each section back on load.
+Adding save data = registering a participant; **zero engine changes**. Missing
+sections on load are tolerated (forward/backward compatibility as games gain
+systems). Keeps the current one-slot, `%AppData%/<AppId>/save.json`,
+never-throw-on-read behavior.
+
+### 4.5 UI: gump parity + script-ready construction
+
+The retained-mode `Control`/`UIManager` tree stays; two upgrades:
+
+**(a) ClassicUO-style window management on `UIManager`** - the methods the user
+cited from CUO's `GameController`/`UIManager`/scene:
+- named/typed gump lookup (`GetGump<T>()`, `GetByName`)
+- modal + keyboard-focus stack
+- z-order control (`BringToFront`), open/close lifecycle hooks
+- dragging
+- `Scene` gets `PushGump` / `CloseGump` convenience so scenes interact with a
+  clean UI layer, mirroring how CUO scenes drive `UIManager`.
+
+**(b) Script-ready construction seam (built now, interpreter later):**
+- `ControlFactory`: string type-name → control constructor registry.
+- String-addressable properties and a named event/callback bus
+  (`onClick="harvest"`), so controls can be built data-drivenly instead of
+  hardwired in C#.
+- `IScriptHost` interface the engine core depends on (never a concrete VM).
+- Result: adding a Lua/TS interpreter later is **additive** - it just calls the
+  same factory + event bus. No UI re-architecture required.
+
+### 4.6 Input: binding registry, not a shared enum
+
+`GameAction` is game-specific and does not belong in the engine. The engine
+ships a small set of engine actions (camera zoom, screenshot, debug toggles)
+plus a **binding table keyed by string (or int)** loaded from config. Games
+define their own actions and register bindings. String action names are also
+exactly what a future Lua UI script references, so this choice pays off twice.
+`InputManager` keeps typed convenience for hot-path movement.
+
+### 4.7 GameHost / service composition
+
+`GameHost` (was `GameController`) owns only engine services: batcher,
+graphics, `InputManager`, `SceneManager`, `AudioManager`, sim/world clock,
+`UoContent`, config, save. The game supplies: initial scene, its `TConfig`/save
+participants, its action bindings, and gameplay. `Scene` still holds a
+back-reference to the host, but typed as the engine `GameHost`, so scenes in
+any prototype get the same services without the engine knowing about any game.
+
+## 5. Rollout (incremental, each step builds + runs + is visually verified)
+
+1. Create `Forge.Engine.csproj`; move the pure-engine files; rename their
+   `TEF.*` namespaces to `Forge.*`; fix `ExilesForge` usings. **Build + run -
+   must be visually identical to today.**
+2. Create `Forge.World.csproj`; move the UO-map toolkit. Build + run.
+3. Generalize config (4.3) and save (4.4); port TEF's schema onto the new
+   APIs. Build + run; verify save/load round-trip and config read still work.
+4. `UIManager` window-management upgrades (4.5a). Build + run.
+5. `ControlFactory` + `IScriptHost` seam (4.5b), no interpreter. Build + run.
+6. Input binding registry (4.6); port TEF's `GameAction` set onto it. Build + run.
+
+Each step is independently shippable. If any step is a bad time to continue,
+the project is left in a working, verified state.
+
+## 6. Acceptance criteria
+
+- [ ] `Forge.Engine` and `Forge.World` build as separate assemblies; neither
+  references any `ExilesForge`/game type (verified: removing the game project
+  still compiles the framework).
+- [ ] `ExilesForge` runs identically to pre-refactor: title → spawn select →
+  world, harvesting, save/load, config, day/night, all debug toggles, the
+  chunk-mesh renderer and picking - all unchanged, visually verified.
+- [ ] Config: TEF's settings load/save through `ConfigManager<TefConfig>` with
+  the engine section split out; hand-editing the file still round-trips.
+- [ ] Save: TEF's data persists via registered `ISaveParticipant`s; a
+  partial/older save (missing a section) loads without throwing.
+- [ ] UI: at least one existing gump (the Resources panel) works through the
+  upgraded `UIManager` with a named lookup + z-order path exercised.
+- [ ] The `ControlFactory`/`IScriptHost` seam exists and is used to build at
+  least one control, proving the data-driven path (no interpreter required).
+- [ ] A throwaway "hello scene" in a second, empty test project referencing
+  only `Forge.Engine` compiles and runs (proves the engine stands alone
+  without `Forge.World` or any game).
+
+## 7. Open questions (not blocking design)
+
+- Final engine name (see banner).
+- Exact `IScriptHost` surface - settle when the interpreter is actually chosen;
+  keep the interface minimal until then.
+- Whether `EngineSettings` keybinds and the input binding registry (4.6) share
+  one serialized representation or stay separate.
+- When (not whether) to promote the entity registry to a `Forge.Gameplay`
+  module - defer until a second prototype needs it (rule-of-three).
