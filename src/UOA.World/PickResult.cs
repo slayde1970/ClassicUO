@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
-namespace TEF.World
+namespace UOA.World
 {
     public enum PickKind
     {

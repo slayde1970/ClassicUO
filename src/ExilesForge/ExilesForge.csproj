@@ -21,8 +21,9 @@
 
   <ItemGroup>
     <!-- UO Architect Engine (Tier 4.5) - the game-agnostic framework this
-         game is now the first consumer of. UOA.World is added in step 2. -->
+         game is now the first consumer of. -->
     <ProjectReference Include="..\UOA.Engine\UOA.Engine.csproj" />
+    <ProjectReference Include="..\UOA.World\UOA.World.csproj" />
     <ProjectReference Include="..\..\external\FNA\FNA.Core.csproj" />
     <ProjectReference Include="..\ClassicUO.Assets\ClassicUO.Assets.csproj" />
     <ProjectReference Include="..\ClassicUO.Renderer\ClassicUO.Renderer.csproj" />

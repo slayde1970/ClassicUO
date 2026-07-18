@@ -13,6 +13,7 @@ using TEF.Persistence;
 using UOA.UI;
 using UOA.UI.Controls;
 using TEF.UI;
+using UOA.World;
 using TEF.World;
 using TEF.World.Entities;
 

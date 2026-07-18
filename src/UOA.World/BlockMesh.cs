@@ -7,7 +7,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using UOA.Assets;
 
-namespace TEF.World
+namespace UOA.World
 {
     /// <summary>
     /// Persistent, texture-bucketed CPU-side vertex array for one 8x8

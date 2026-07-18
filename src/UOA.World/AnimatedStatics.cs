@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using UOA.Assets;
 using UOA.Core;
 
-namespace TEF.World
+namespace UOA.World
 {
     /// <summary>
     /// Advances the shared per-graphic-id animation frame for animated

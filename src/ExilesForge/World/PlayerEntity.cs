@@ -8,6 +8,7 @@ using Microsoft.Xna.Framework.Graphics;
 using UOA.Assets;
 using UOA.Core;
 using UOA.Input;
+using UOA.World;
 using TEF.Input;
 
 namespace TEF.World
@@ -27,7 +28,7 @@ namespace TEF.World
     /// it lines up directly with TileRenderer's map lookups and iso
     /// projection; it does not affect where the sprite itself is drawn.
     /// </summary>
-    public sealed class PlayerEntity
+    public sealed class PlayerEntity : IWorldPlayer
     {
         private const ushort BodyMaleHuman = 0x0190;
         private const int MillisecondsPerFrame = 150; // matches ClassicUO's WALKING_DELAY

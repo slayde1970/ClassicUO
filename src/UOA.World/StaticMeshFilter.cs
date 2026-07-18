@@ -3,7 +3,7 @@
 using System.Collections.Generic;
 using UOA.Assets;
 
-namespace TEF.World
+namespace UOA.World
 {
     /// <summary>
     /// Decides which map statics stay on the per-object draw path (never

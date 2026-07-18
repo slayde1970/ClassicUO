@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using UOA.Assets;
+using UOA.World;
 
 namespace TEF.World.Entities
 {
@@ -23,7 +24,7 @@ namespace TEF.World.Entities
     /// Fine at expected entity counts (tens to low hundreds); revisit if
     /// that changes.
     /// </summary>
-    public sealed class EntityRenderSystem
+    public sealed class EntityRenderSystem : IWorldEntitySource
     {
         private readonly EntityWorld _world;
         private readonly GameAssets _assets;

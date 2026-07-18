@@ -9,7 +9,7 @@ using ClassicUO.Renderer;
 using Microsoft.Xna.Framework;
 using UOA.Assets;
 
-namespace TEF.World
+namespace UOA.World
 {
     /// <summary>
     /// The shared world-data layer: reads land tiles and statics straight from

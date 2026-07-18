@@ -3,7 +3,7 @@
 using ClassicUO.Renderer;
 using Microsoft.Xna.Framework;
 using UOA.Core;
-using TEF.World;
+using UOA.World;
 
 namespace TEF.UI
 {

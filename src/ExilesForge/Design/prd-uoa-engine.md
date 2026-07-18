@@ -1,7 +1,7 @@
 # PRD: UO Architect Engine Extraction (Tier 4.5)
 
-Status: **In progress.** Step 1 (extract `UOA.Engine`) done and verified;
-steps 2-6 pending.
+Status: **In progress.** Steps 1-2 (extract `UOA.Engine` + `UOA.World`) done
+and verified; steps 3-6 pending.
 
 > **Engine name: UO Architect Engine**, root namespace **`UOA`**. Assemblies
 > `UOA.Engine` (game-agnostic framework) and `UOA.World` (UO isometric-world
@@ -206,8 +206,15 @@ any prototype get the same services without the engine knowing about any game.
    `Scene.OnHostExiting()` virtual hook that `WorldScene` overrides instead of
    referencing `WorldScene` directly. `UOA.Engine` builds standalone with zero
    game references.
-2. Create `UOA.World.csproj`; move the UO-map toolkit (namespace `UOA.World`).
-   Build + run.
+2. **[DONE]** Create `UOA.World.csproj`; move the UO-map toolkit (namespace
+   `UOA.World`, the 8 files listed in 4.2). Build + run - user-verified (world,
+   day/night, player occlusion, entity harvest, picking all unchanged). One
+   decoupling was required: `TileRenderer.Draw` took a concrete `PlayerEntity`
+   and `EntityRenderSystem`, which would have inverted the dependency. Both are
+   now the interfaces `IWorldPlayer` / `IWorldEntitySource` (defined in
+   `UOA.World/WorldInterfaces.cs`), implemented by the game's `PlayerEntity` /
+   `EntityRenderSystem` - so those gameplay types stay in the game per 4.2 and
+   `UOA.World` builds standalone with zero game references.
 3. Generalize config (4.3) and save (4.4); port TEF's schema onto the new
    APIs. Build + run; verify save/load round-trip and config read still work.
 4. `UIManager` window-management upgrades (4.5a). Build + run.

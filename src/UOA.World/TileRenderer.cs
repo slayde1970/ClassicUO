@@ -5,9 +5,8 @@ using System.Collections.Generic;
 using ClassicUO.Renderer;
 using Microsoft.Xna.Framework;
 using UOA.Assets;
-using TEF.World.Entities;
 
-namespace TEF.World
+namespace UOA.World
 {
     /// <summary>
     /// Draws the world floor under the player: land tiles and the statics
@@ -83,7 +82,7 @@ namespace TEF.World
         /// <param name="drawStatics">When false, skips MAP statics only (debug toggle to inspect land without clutter). Entities and the player always draw regardless.</param>
         /// <param name="animatedStatics">Shared per-graphic-id animation frame table (fountains, torches, lava, ...) - see AnimatedStatics. Its current offset is added to a static's base graphic before the art lookup.</param>
         public void Draw(
-            UltimaBatcher2D batcher, WorldMap map, EntityRenderSystem entities, PlayerEntity player,
+            UltimaBatcher2D batcher, WorldMap map, IWorldEntitySource entities, IWorldPlayer player,
             int viewRangeInTiles, Vector2 screenCenterOffset,
             Point? pickPosition, out PickResult entityPick, out PickResult tilePick,
             AnimatedStatics animatedStatics, bool drawStatics = true)
@@ -300,9 +299,9 @@ namespace TEF.World
         /// rather than getting their own interface/draw path.
         /// </summary>
         private void DrawStaticsAt(
-            UltimaBatcher2D batcher, WorldMap map, GameAssets assets, EntityRenderSystem entities, bool drawMapStatics,
+            UltimaBatcher2D batcher, WorldMap map, GameAssets assets, IWorldEntitySource entities, bool drawMapStatics,
             int tx, int ty, Vector2 worldOffset,
-            PlayerEntity player, int playerPriorityZ, Vector2 playerScreenCenter, AnimatedStatics animatedStatics)
+            IWorldPlayer player, int playerPriorityZ, Vector2 playerScreenCenter, AnimatedStatics animatedStatics)
         {
             // Map statics are the only thing gated by drawMapStatics (the F6/F7
             // debug toggles) - entities always draw regardless, so hiding map
@@ -435,7 +434,7 @@ namespace TEF.World
         /// resolution with its own Draw, so this can never drift out of sync
         /// with what's actually on screen).
         /// </summary>
-        private void DrawPlayerAndPick(UltimaBatcher2D batcher, GameAssets assets, PlayerEntity player, Vector2 screenCenterOffset)
+        private void DrawPlayerAndPick(UltimaBatcher2D batcher, GameAssets assets, IWorldPlayer player, Vector2 screenCenterOffset)
         {
             player.Draw(batcher, assets, screenCenterOffset);
 

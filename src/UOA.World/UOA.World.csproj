@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    UO Architect Engine - World toolkit (namespace UOA.World, Tier 4.5 step 2).
+    The reusable UO isometric-world layer: map/statics reader, tile + block-mesh
+    rendering, depth keys, picking, animated statics, day/night. Sits ABOVE
+    UOA.Engine; a prototype that needs a UO map references this, a pure-UI one
+    references only UOA.Engine. Must never reference a game project - it stays
+    decoupled from gameplay (player, entities) via the interfaces in
+    WorldInterfaces.cs, which the game implements.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <AssemblyName>UOA.World</AssemblyName>
+    <RootNamespace>UOA.World</RootNamespace>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\UOA.Engine\UOA.Engine.csproj" />
+    <ProjectReference Include="..\..\external\FNA\FNA.Core.csproj" />
+    <ProjectReference Include="..\ClassicUO.Assets\ClassicUO.Assets.csproj" />
+    <ProjectReference Include="..\ClassicUO.Renderer\ClassicUO.Renderer.csproj" />
+    <ProjectReference Include="..\ClassicUO.IO\ClassicUO.IO.csproj" />
+    <ProjectReference Include="..\ClassicUO.Utility\ClassicUO.Utility.csproj" />
+  </ItemGroup>
+
+</Project>

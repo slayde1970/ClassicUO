@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
-namespace TEF.World
+namespace UOA.World
 {
     /// <summary>
     /// The GPU depth-buffer sort key TEF is moving to (Tier 4 #13 - see

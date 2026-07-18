@@ -6,7 +6,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using UOA.Core;
 
-namespace TEF.World
+namespace UOA.World
 {
     /// <summary>
     /// Full-screen ambient day/night darkening driven by WorldClock.TimeOfDay.
