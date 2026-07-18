@@ -26,7 +26,7 @@ namespace UOA.Core
         private int _frameCount;
         private double _fpsElapsedMs;
 
-        public GameController(GameSettings settings)
+        public GameController(EngineSettings settings)
         {
             Settings = settings;
 
@@ -51,7 +51,7 @@ namespace UOA.Core
             TargetElapsedTime = System.TimeSpan.FromMilliseconds(1000.0 / 250.0);
         }
 
-        public GameSettings Settings { get; }
+        public EngineSettings Settings { get; }
         public GraphicsDeviceManager GraphicsManager { get; }
         public GameAssets Assets { get; } = new GameAssets();
         public AudioManager Audio { get; } = new AudioManager();

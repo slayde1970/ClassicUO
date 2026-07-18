@@ -7,7 +7,7 @@ namespace UOA.Core
     /// data files. Unlike ClassicUO's Settings, this has no network/account
     /// fields - TEF never talks to a UO server.
     /// </summary>
-    public sealed class GameSettings
+    public sealed class EngineSettings
     {
         public string UltimaOnlineDirectory { get; set; } = string.Empty;
         public string ClientVersion { get; set; } = string.Empty;

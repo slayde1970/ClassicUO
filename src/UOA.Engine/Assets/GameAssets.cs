@@ -44,7 +44,7 @@ namespace UOA.Assets
 
         private readonly HashSet<int> _loadedMaps = new();
 
-        public unsafe void Load(GraphicsDevice device, GameSettings settings)
+        public unsafe void Load(GraphicsDevice device, EngineSettings settings)
         {
             if (!Directory.Exists(settings.UltimaOnlineDirectory))
             {

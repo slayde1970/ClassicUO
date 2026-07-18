@@ -1,7 +1,7 @@
 # PRD: UO Architect Engine Extraction (Tier 4.5)
 
-Status: **In progress.** Steps 1-2 (extract `UOA.Engine` + `UOA.World`) done
-and verified; steps 3-6 pending.
+Status: **In progress.** Steps 1-3 (extract `UOA.Engine` + `UOA.World`;
+generalize config + save) done and verified; steps 4-6 pending.
 
 > **Engine name: UO Architect Engine**, root namespace **`UOA`**. Assemblies
 > `UOA.Engine` (game-agnostic framework) and `UOA.World` (UO isometric-world
@@ -215,8 +215,19 @@ any prototype get the same services without the engine knowing about any game.
    `UOA.World/WorldInterfaces.cs`), implemented by the game's `PlayerEntity` /
    `EntityRenderSystem` - so those gameplay types stay in the game per 4.2 and
    `UOA.World` builds standalone with zero game references.
-3. Generalize config (4.3) and save (4.4); port TEF's schema onto the new
-   APIs. Build + run; verify save/load round-trip and config read still work.
+3. **[DONE]** Generalize config (4.3) and save (4.4); port TEF's schema onto
+   the new APIs. Build + run - user-verified (config loads with FPS preserved;
+   save/load round-trip restores player/tree/wood/clock). Details: `GameSettings`
+   renamed to engine `EngineSettings`; new generic `ConfigManager<TConfig>` +
+   `SaveManager`/`ISaveParticipant`/`SaveSection` live in `UOA.Persistence`
+   (UOA.Engine); the game's `TefConfig` wraps `EngineSettings` (+ `TefApp.AppId`
+   = "ExilesForge"); WorldScene registers four `SaveSection`s (game/player/
+   clock/entities). NOTE: both config and save file **formats changed** (config
+   now nests engine settings under `"Engine"`; save is now a section-keyed
+   document), so pre-4.5 files are incompatible - Program.cs self-heals a
+   missing/empty engine section by reseeding to defaults rather than crashing.
+   Also fixed a latent bug: `WorldScene.OnHostExiting` (save-on-clean-exit) was
+   never actually overridden after step 1 - autosave masked it; now in place.
 4. `UIManager` window-management upgrades (4.5a). Build + run.
 5. `ControlFactory` + `IScriptHost` seam (4.5b), no interpreter. Build + run.
 6. Input binding registry (4.6); port TEF's `GameAction` set onto it. Build + run.

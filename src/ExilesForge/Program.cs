@@ -2,6 +2,7 @@
 
 using System;
 using UOA.Core;
+using UOA.Persistence;
 using TEF.Input;
 using TEF.Persistence;
 using TEF.Scenes;
@@ -20,20 +21,32 @@ namespace TEF
         [STAThread]
         private static void Main(string[] args)
         {
-            var settings = ConfigManager.Load();
+            var configManager = new ConfigManager<TefConfig>(TefApp.AppId);
+            var config = configManager.Load();
 
-            if (settings == null)
+            // Reseed when the file is missing/unparseable (config == null) OR
+            // present but lacking a usable engine section - e.g. a config from
+            // before the Tier 4.5 nesting, which deserializes to a TefConfig
+            // with an empty Engine. Self-heal to defaults instead of crashing
+            // later with "UO directory not found: ''".
+            if (config == null || string.IsNullOrEmpty(config.Engine?.UltimaOnlineDirectory))
             {
-                settings = new GameSettings
+                config = new TefConfig
                 {
-                    UltimaOnlineDirectory = DefaultUltimaOnlineDirectory,
-                    ClientVersion = DefaultClientVersion,
+                    Engine = new EngineSettings
+                    {
+                        UltimaOnlineDirectory = DefaultUltimaOnlineDirectory,
+                        ClientVersion = DefaultClientVersion,
+                    },
                 };
 
-                // First run - write out a discoverable, editable file rather
-                // than silently falling back to these defaults every launch.
-                ConfigManager.Save(settings);
+                // First run (or a repaired legacy config) - write out a
+                // discoverable, editable file rather than silently falling
+                // back to these defaults every launch.
+                configManager.Save(config);
             }
+
+            var settings = config.Engine;
 
             // Command-line args are a transient per-launch override, not
             // something that gets written back into the saved config.

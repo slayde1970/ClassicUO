@@ -2,11 +2,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
 using ClassicUO.Renderer;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using UOA.Core;
 using UOA.Input;
+using UOA.Persistence;
 using UOA.Scenes;
 using TEF.Input;
 using TEF.Persistence;
@@ -127,14 +129,20 @@ namespace TEF.Scenes
         public bool PlayMusicOnStart = true;
         const int DEFAULT_MUSIC = 15;
 
-        // Null = fresh session (today's spawn tile + debug trees). Non-null =
-        // restore this exact state instead - see Load()/RestoreFromSave().
-        private readonly SaveData _saveData;
+        // The engine save system (Tier 4.5): this scene registers its own
+        // sections (player/clock/game/entities) as ISaveParticipants, so the
+        // engine persists them without knowing their shape. Same %AppData%/
+        // ExilesForge/save.json slot as before, keyed by TefApp.AppId.
+        private readonly SaveManager _saves = new(TefApp.AppId);
 
-        public WorldScene(GameController game, SaveData saveData = null, Vector2? spawnTile = null) : base(game)
+        // true = restore the existing save on Load(); false = fresh session
+        // (spawn tile + debug trees).
+        private readonly bool _continueFromSave;
+
+        public WorldScene(GameController game, bool continueFromSave = false, Vector2? spawnTile = null) : base(game)
         {
             _entityRenderer = new EntityRenderSystem(_entities, game.Assets);
-            _saveData = saveData;
+            _continueFromSave = continueFromSave;
             _spawnTile = spawnTile ?? DefaultSpawnTile;
         }
 
@@ -164,73 +172,66 @@ namespace TEF.Scenes
             _map = new WorldMap(Game.Assets, MapIndex);
             _animatedStatics.Initialize(Game.Assets);
 
-            if (_saveData != null)
-            {
-                RestoreFromSave(_saveData);
-            }
-            else
+            RegisterSaveSections();
+
+            // Restore only if we were asked to AND a save actually loaded;
+            // otherwise start fresh. (A "Continue" with a missing/corrupt file
+            // falls through to a fresh session rather than erroring.)
+            if (!(_continueFromSave && _saves.Load()))
             {
                 _player.Spawn(_map, _spawnTile);
                 SpawnDebugTrees();
             }
         }
 
-        private void RestoreFromSave(SaveData data)
+        // Registers each system's save section with the engine SaveManager
+        // (Tier 4.5). Adding a new persistent system later is just one more
+        // Register call here - no engine change. Section keys are stable
+        // strings; order only affects on-disk key order, not correctness.
+        private void RegisterSaveSections()
         {
-            _player.RestoreState(new Vector2(data.Player.X, data.Player.Y), data.Player.Z, (Direction)data.Player.Facing);
-            Game.World.Restore(data.Clock.Day, data.Clock.TimeOfDay);
-            _woodCollected = data.WoodCollected;
-
-            foreach (var entity in data.Entities)
-            {
-                int id = _entities.CreateEntity();
-
-                _entities.Transforms[id] = new Transform { WorldPosition = new Vector2(entity.X, entity.Y), Z = entity.Z };
-                _entities.Appearances[id] = new Appearance { Graphic = entity.Graphic, Hue = entity.Hue, Height = entity.Height };
-
-                if (entity.HasHarvestable)
-                {
-                    _entities.Harvestables[id] = new Harvestable
-                    {
-                        Resource = entity.Resource,
-                        YieldRemaining = entity.YieldRemaining,
-                        YieldMax = entity.YieldMax,
-                        AvailableGraphic = entity.AvailableGraphic,
-                        DepletedGraphic = entity.DepletedGraphic,
-                        IsDepleted = entity.IsDepleted,
-                        RespawnCountdown = entity.RespawnCountdown,
-                        RespawnDuration = entity.RespawnDuration,
-                    };
-                }
-
-                if (entity.HasInteractable)
-                {
-                    _entities.Interactables[id] = new Interactable();
-                }
-            }
+            _saves.Register(new SaveSection("game", CaptureGameState, RestoreGameState));
+            _saves.Register(new SaveSection("player", CapturePlayer, RestorePlayer));
+            _saves.Register(new SaveSection("clock", CaptureClock, RestoreClock));
+            _saves.Register(new SaveSection("entities", CaptureEntities, RestoreEntities));
         }
 
-        /// <summary>Builds a SaveData snapshot of current runtime state and writes it - called by the autosave timer (Update) and GameController.OnExiting.</summary>
-        public void SaveGame()
+        private object CaptureGameState() =>
+            new GameStateSaveData { MapIndex = MapIndex, WoodCollected = _woodCollected };
+
+        private void RestoreGameState(JsonElement section)
         {
-            var data = new SaveData
-            {
-                MapIndex = MapIndex,
-                Player = new PlayerSaveData
-                {
-                    X = _player.WorldPosition.X,
-                    Y = _player.WorldPosition.Y,
-                    Z = _player.Z,
-                    Facing = (byte)_player.Facing,
-                },
-                Clock = new WorldClockSaveData
-                {
-                    Day = Game.World.Day,
-                    TimeOfDay = Game.World.TimeOfDay,
-                },
-                WoodCollected = _woodCollected,
-                Entities = new List<EntitySaveData>(),
-            };
+            var data = section.Deserialize<GameStateSaveData>();
+            _woodCollected = data.WoodCollected;
+            // MapIndex is fixed at 0 for now; restored value is informational.
+        }
+
+        private object CapturePlayer() => new PlayerSaveData
+        {
+            X = _player.WorldPosition.X,
+            Y = _player.WorldPosition.Y,
+            Z = _player.Z,
+            Facing = (byte)_player.Facing,
+        };
+
+        private void RestorePlayer(JsonElement section)
+        {
+            var data = section.Deserialize<PlayerSaveData>();
+            _player.RestoreState(new Vector2(data.X, data.Y), data.Z, (Direction)data.Facing);
+        }
+
+        private object CaptureClock() =>
+            new WorldClockSaveData { Day = Game.World.Day, TimeOfDay = Game.World.TimeOfDay };
+
+        private void RestoreClock(JsonElement section)
+        {
+            var data = section.Deserialize<WorldClockSaveData>();
+            Game.World.Restore(data.Day, data.TimeOfDay);
+        }
+
+        private object CaptureEntities()
+        {
+            var list = new List<EntitySaveData>();
 
             foreach (var (id, transform) in _entities.Transforms)
             {
@@ -261,11 +262,53 @@ namespace TEF.Scenes
 
                 entityData.HasInteractable = _entities.Interactables.ContainsKey(id);
 
-                data.Entities.Add(entityData);
+                list.Add(entityData);
             }
 
-            SaveManager.Save(data);
+            return list;
         }
+
+        private void RestoreEntities(JsonElement section)
+        {
+            var list = section.Deserialize<List<EntitySaveData>>();
+            if (list == null)
+            {
+                return;
+            }
+
+            foreach (var entity in list)
+            {
+                int id = _entities.CreateEntity();
+
+                _entities.Transforms[id] = new Transform { WorldPosition = new Vector2(entity.X, entity.Y), Z = entity.Z };
+                _entities.Appearances[id] = new Appearance { Graphic = entity.Graphic, Hue = entity.Hue, Height = entity.Height };
+
+                if (entity.HasHarvestable)
+                {
+                    _entities.Harvestables[id] = new Harvestable
+                    {
+                        Resource = entity.Resource,
+                        YieldRemaining = entity.YieldRemaining,
+                        YieldMax = entity.YieldMax,
+                        AvailableGraphic = entity.AvailableGraphic,
+                        DepletedGraphic = entity.DepletedGraphic,
+                        IsDepleted = entity.IsDepleted,
+                        RespawnCountdown = entity.RespawnCountdown,
+                        RespawnDuration = entity.RespawnDuration,
+                    };
+                }
+
+                if (entity.HasInteractable)
+                {
+                    _entities.Interactables[id] = new Interactable();
+                }
+            }
+        }
+
+        /// <summary>Snapshots current runtime state into the save file via the registered participants - called by the autosave timer (Update) and GameController.OnExiting (via OnHostExiting).</summary>
+        public void SaveGame() => _saves.Save();
+
+        public override void OnHostExiting() => SaveGame();
 
         private void SpawnDebugTrees()
         {

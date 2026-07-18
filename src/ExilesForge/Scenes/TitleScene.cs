@@ -6,6 +6,7 @@ using ClassicUO.Renderer;
 using Microsoft.Xna.Framework;
 using UOA.Core;
 using UOA.Input;
+using UOA.Persistence;
 using UOA.Scenes;
 using TEF.Persistence;
 using UOA.UI;
@@ -33,6 +34,11 @@ namespace TEF.Scenes
         private Panel _confirmPanel;
 
         private readonly BackgroundImage _background = new();
+
+        // Same save slot WorldScene writes (keyed by TefApp.AppId); used here
+        // only for existence checks and the New Game wipe - no participants
+        // registered, so Load() isn't called from this scene.
+        private readonly SaveManager _saves = new(TefApp.AppId);
 
         public TitleScene(GameController game) : base(game)
         {
@@ -69,7 +75,7 @@ namespace TEF.Scenes
             _menuPanel.Children.Add(newGameButton);
 
             Button continueButton = null;
-            if (SaveManager.Exists())
+            if (_saves.Exists())
             {
                 continueButton = new Button("Continue");
                 continueButton.Clicked += OnContinueClicked;
@@ -103,12 +109,12 @@ namespace TEF.Scenes
 
         private void OnContinueClicked()
         {
-            Game.Scenes.ChangeScene(new WorldScene(Game, SaveManager.Load()));
+            Game.Scenes.ChangeScene(new WorldScene(Game, continueFromSave: true));
         }
 
         private void OnNewGameClicked()
         {
-            if (!SaveManager.Exists())
+            if (!_saves.Exists())
             {
                 Game.Scenes.ChangeScene(new SpawnSelectScene(Game));
                 return;
@@ -156,7 +162,7 @@ namespace TEF.Scenes
 
         private void OnConfirmNewGameYes()
         {
-            SaveManager.Delete();
+            _saves.Delete();
             Game.Scenes.ChangeScene(new SpawnSelectScene(Game));
         }
 

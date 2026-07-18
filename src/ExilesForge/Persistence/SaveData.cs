@@ -6,19 +6,17 @@ using TEF.World.Entities;
 namespace TEF.Persistence
 {
     /// <summary>
-    /// Root save-file shape. Deliberately independent of runtime types
-    /// (EntityWorld's dictionaries, PlayerEntity, WorldClock) so the save
-    /// format doesn't have to change shape every time an internal class
-    /// does. See Design/prd-persistence.md.
+    /// Per-section save DTOs (Tier 4.5). Each maps to one
+    /// <c>ISaveParticipant</c> section registered by WorldScene - deliberately
+    /// independent of runtime types (EntityWorld's dictionaries, PlayerEntity,
+    /// WorldClock) so the save format doesn't reshape every time an internal
+    /// class does. See Design/prd-persistence.md and prd-uoa-engine.md 4.4.
     /// </summary>
-    public sealed class SaveData
+    public sealed class GameStateSaveData
     {
         public int SaveVersion { get; set; } = 1;
         public int MapIndex { get; set; }
-        public PlayerSaveData Player { get; set; } = new();
-        public WorldClockSaveData Clock { get; set; } = new();
         public int WoodCollected { get; set; }
-        public List<EntitySaveData> Entities { get; set; } = new();
     }
 
     public sealed class PlayerSaveData
