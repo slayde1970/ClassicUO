@@ -48,7 +48,6 @@ namespace TEF.Scenes
         private const float ButtonBandTopFraction = 0.63f;
 
         private readonly BackgroundImage _background = new();
-        private readonly UIManager _ui = new();
         private readonly Panel _menuPanel = new() { Width = 220, Height = 90 };
 
         public SpawnSelectScene(GameController game) : base(game)
@@ -98,7 +97,7 @@ namespace TEF.Scenes
                 child.X = (_menuPanel.Width - child.Width) / 2;
             }
 
-            _ui.Add(_menuPanel);
+            Ui.Add(_menuPanel);
         }
 
         public override void Update(InputManager input)
@@ -111,7 +110,7 @@ namespace TEF.Scenes
             _menuPanel.X = bgRect.X + (bgRect.Width - _menuPanel.Width) / 2;
             _menuPanel.Y = bgRect.Y + (int)(bgRect.Height * ButtonBandTopFraction);
 
-            _ui.Update(input);
+            Ui.Update(input);
         }
 
         public override void Draw(UltimaBatcher2D batcher)
@@ -120,7 +119,7 @@ namespace TEF.Scenes
 
             _background.Draw(batcher, Camera.Bounds.Width, Camera.Bounds.Height);
 
-            _ui.Draw(batcher);
+            Ui.Draw(batcher);
         }
     }
 }

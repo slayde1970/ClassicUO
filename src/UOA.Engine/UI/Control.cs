@@ -25,6 +25,20 @@ namespace UOA.UI
         public int Height;
         public bool Visible = true;
 
+        // Optional lookup key (UIManager.GetByName). Null/empty = anonymous.
+        public string Name;
+
+        // When a root control is modal, UIManager blocks hover/click to every
+        // root below the topmost modal one (Tier 4.5) - e.g. a confirm dialog
+        // that must be answered before the UI underneath is usable again.
+        public bool IsModal;
+
+        // When true and this is the control directly grabbed, UIManager drags
+        // it by the mouse (moving its X/Y). Typically set on a root gump so
+        // it can be repositioned; buttons/labels leave it false so clicking
+        // them still clicks rather than drags.
+        public bool Draggable;
+
         // False for purely decorative controls (e.g. Label) so hovering over
         // them doesn't steal hover/click from an interactive parent (e.g. a
         // Button with a text label drawn on top of it) - see UIManager.HitTest.
@@ -83,6 +97,36 @@ namespace UOA.UI
 
         public virtual void OnClick(MouseButton button)
         {
+        }
+
+        /// <summary>Called by UIManager when this control is added as a root (gump opened). Override to run open-time logic.</summary>
+        public virtual void OnOpened()
+        {
+        }
+
+        /// <summary>Called by UIManager when this control is removed as a root (gump closed). Override to run cleanup.</summary>
+        public virtual void OnClosed()
+        {
+        }
+
+        /// <summary>Depth-first search of this subtree for a control with the given <see cref="Name"/> (this control included). Null if none.</summary>
+        public Control FindByName(string name)
+        {
+            if (Name == name)
+            {
+                return this;
+            }
+
+            foreach (var child in Children)
+            {
+                var found = child.FindByName(name);
+                if (found != null)
+                {
+                    return found;
+                }
+            }
+
+            return null;
         }
     }
 }

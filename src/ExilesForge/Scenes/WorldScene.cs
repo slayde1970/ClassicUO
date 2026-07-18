@@ -115,10 +115,13 @@ namespace TEF.Scenes
         // inventory system (that's later gameplay-design scope) - just
         // enough live state to prove Panel+Label+Button+click routing all
         // work together end to end.
-        private readonly UIManager _ui = new();
-        private readonly Panel _resourcePanel = new() { Width = 170, Height = 78 };
+        // Uses the base Scene's shared Ui layer (Tier 4.5). Named + draggable:
+        // it drops into the top-right corner on first frame, then the player
+        // can drag it anywhere (dragging also raises it to the front).
+        private readonly Panel _resourcePanel = new() { Width = 170, Height = 78, Name = "resources", Draggable = true };
         private readonly Label _woodLabel = new() { X = 10, Y = 30 };
         private int _woodCollected;
+        private bool _resourcePanelPositioned;
 
         // See Design/prd-persistence.md 4.4 - autosave uses render Delta (not
         // the fixed sim tick) since its timing has no gameplay-determinism
@@ -155,7 +158,7 @@ namespace TEF.Scenes
             resetButton.Clicked += () => _woodCollected = 0;
             _resourcePanel.Children.Add(resetButton);
 
-            _ui.Add(_resourcePanel);
+            Ui.Add(_resourcePanel);
         }
 
         public override void Load()
@@ -405,19 +408,25 @@ namespace TEF.Scenes
                 Game.World.Advance(Game.World.DayLengthSeconds / 24f);
             }
 
-            // Anchor the resource panel to the top-right corner (recomputed
-            // every frame so a window resize doesn't leave it stranded).
-            _resourcePanel.X = Camera.Bounds.Width - _resourcePanel.Width - 5;
-            _resourcePanel.Y = 10;
+            // Drop the resource panel into the top-right corner once, then
+            // leave it alone so the player can drag it (Tier 4.5) without it
+            // snapping back every frame.
+            if (!_resourcePanelPositioned)
+            {
+                _resourcePanel.X = Camera.Bounds.Width - _resourcePanel.Width - 5;
+                _resourcePanel.Y = 10;
+                _resourcePanelPositioned = true;
+            }
             _woodLabel.Text = $"Wood: {_woodCollected}";
 
-            _ui.Update(input);
+            Ui.Update(input);
 
             // Left-click harvests whatever entity the cursor is actually over
             // (resolved by the previous frame's Draw via mouse-picking) -
             // unless the click actually landed on a UI panel (e.g. the
             // Reset button), which should never also chop a tree behind it.
-            if (!_ui.IsMouseOverUI
+            if (!Ui.IsMouseOverUI
+                && !Ui.IsDragging
                 && input.IsMousePressed(MouseButton.Left)
                 && _entityPick.Kind == PickKind.Entity
                 && _entities.Harvestables.ContainsKey(_entityPick.EntityId)
@@ -545,7 +554,7 @@ namespace TEF.Scenes
             // Screen-space HUD/UI - each has its own Begin/End (no camera
             // matrix), drawn after the world so they always sit on top.
             _hud.Draw(batcher, _tilePick, _entityPick, Game.World, _map, _tiles, _lastWorldFlushesDone, _lastWorldTextureSwitches);
-            _ui.Draw(batcher);
+            Ui.Draw(batcher);
         }
 
         /// <summary>

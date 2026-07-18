@@ -1,7 +1,8 @@
 # PRD: UO Architect Engine Extraction (Tier 4.5)
 
-Status: **In progress.** Steps 1-3 (extract `UOA.Engine` + `UOA.World`;
-generalize config + save) done and verified; steps 4-6 pending.
+Status: **In progress.** Steps 1-4 (extract `UOA.Engine` + `UOA.World`;
+generalize config + save; UI window management) done and verified; step 5
+pending, step 6 largely folded into step 1.
 
 > **Engine name: UO Architect Engine**, root namespace **`UOA`**. Assemblies
 > `UOA.Engine` (game-agnostic framework) and `UOA.World` (UO isometric-world
@@ -228,7 +229,17 @@ any prototype get the same services without the engine knowing about any game.
    missing/empty engine section by reseeding to defaults rather than crashing.
    Also fixed a latent bug: `WorldScene.OnHostExiting` (save-on-clean-exit) was
    never actually overridden after step 1 - autosave masked it; now in place.
-4. `UIManager` window-management upgrades (4.5a). Build + run.
+4. **[DONE]** `UIManager` window-management upgrades (4.5a). Build + run -
+   user-verified. `UIManager` gained named/typed lookup (`GetByName`,
+   `GetGump<T>`), z-order (`BringToFront`, auto on drag-grab), a modal stack,
+   open/close lifecycle (`Control.OnOpened`/`OnClosed`), and dragging of
+   `Draggable` controls; `Control` gained `Name`/`IsModal`/`Draggable`/
+   `FindByName`. `Scene` now owns a shared `Ui` layer with `PushGump`/
+   `CloseGump`; all three game scenes moved off their private `_ui` fields onto
+   it. Exercised in TEF: the Resources panel is named + draggable (anchors
+   top-right once, then drag-to-move + raise-to-front); the New Game confirm
+   dialog is `IsModal` (blocks the title buttons underneath via the manager
+   rather than the dim panel).
 5. `ControlFactory` + `IScriptHost` seam (4.5b), no interpreter. Build + run.
 6. Input binding registry (4.6); port TEF's `GameAction` set onto it. Build + run.
 

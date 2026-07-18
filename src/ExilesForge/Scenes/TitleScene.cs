@@ -24,7 +24,6 @@ namespace TEF.Scenes
     {
         private static readonly string BackgroundPath = Path.Combine(AppContext.BaseDirectory, "Content", "title-bg.png");
 
-        private readonly UIManager _ui = new();
         private readonly Panel _menuPanel = new() { Width = 220, Height = 90 };
 
         // Built lazily in the New Game handler (only needed if a save exists
@@ -104,7 +103,7 @@ namespace TEF.Scenes
 
             _menuPanel.Height = height;
 
-            _ui.Add(_menuPanel);
+            Ui.Add(_menuPanel);
         }
 
         private void OnContinueClicked()
@@ -125,10 +124,10 @@ namespace TEF.Scenes
 
         private void ShowNewGameConfirm()
         {
-            // Full-screen dim panel behind the dialog - added first (bottom
-            // of Z order) so the small dialog panel draws on top of it, but
-            // still hit-tests/blocks clicks to the title buttons underneath
-            // (UIManager checks the topmost-added root first).
+            // Full-screen dim panel behind the dialog, purely visual now: the
+            // dialog is flagged IsModal (Tier 4.5), so UIManager formally
+            // blocks hover/click to the title buttons underneath rather than
+            // relying on the dim panel to cover them.
             _confirmDim = new Panel
             {
                 X = 0,
@@ -138,7 +137,7 @@ namespace TEF.Scenes
                 BackgroundColor = new Color(0, 0, 0, 160),
             };
 
-            _confirmPanel = new Panel { Width = 260, Height = 110 };
+            _confirmPanel = new Panel { Width = 260, Height = 110, IsModal = true };
             _confirmPanel.Children.Add(new Label
             {
                 Text = "This will erase your saved game.",
@@ -156,8 +155,8 @@ namespace TEF.Scenes
 
             CenterOnScreen(_confirmPanel);
 
-            _ui.Add(_confirmDim);
-            _ui.Add(_confirmPanel);
+            Ui.Add(_confirmDim);
+            Ui.Add(_confirmPanel);
         }
 
         private void OnConfirmNewGameYes()
@@ -168,8 +167,8 @@ namespace TEF.Scenes
 
         private void HideNewGameConfirm()
         {
-            _ui.Remove(_confirmPanel);
-            _ui.Remove(_confirmDim);
+            Ui.Remove(_confirmPanel);
+            Ui.Remove(_confirmDim);
             _confirmPanel = null;
             _confirmDim = null;
         }
@@ -203,7 +202,7 @@ namespace TEF.Scenes
                 CenterOnScreen(_confirmPanel);
             }
 
-            _ui.Update(input);
+            Ui.Update(input);
         }
 
         public override void Draw(UltimaBatcher2D batcher)
@@ -212,7 +211,7 @@ namespace TEF.Scenes
 
             _background.Draw(batcher, Camera.Bounds.Width, Camera.Bounds.Height);
 
-            _ui.Draw(batcher);
+            Ui.Draw(batcher);
         }
     }
 }
