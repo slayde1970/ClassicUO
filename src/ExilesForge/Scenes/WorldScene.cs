@@ -121,7 +121,7 @@ namespace TEF.Scenes
         private float _autosaveTimer;
 
         public bool PlayMusicOnStart = true;
-        const int DEFAULT_MUSIC = 8;
+        const int DEFAULT_MUSIC = 15;
 
         // Null = fresh session (today's spawn tile + debug trees). Non-null =
         // restore this exact state instead - see Load()/RestoreFromSave().

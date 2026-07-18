@@ -46,6 +46,8 @@ namespace TEF.Scenes
             // trap as WorldScene.BuildResourcePanel, so this waits until here.
             BuildMenu();
             _background.Load(Game.GraphicsDevice, BackgroundPath);
+
+            Game.Audio.PlayMusic(69);
         }
 
         private const int ButtonPaddingX = 10;
