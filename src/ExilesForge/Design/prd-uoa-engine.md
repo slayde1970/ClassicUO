@@ -1,13 +1,11 @@
-# PRD: Forge Framework Extraction (Tier 4.5)
+# PRD: UO Architect Engine Extraction (Tier 4.5)
 
 Status: **Design locked - not yet implemented.**
 
-> Working names `Forge.Engine` / `Forge.World` are placeholders. The engine
-> should get a **game-neutral name** before implementation starts, since it
-> will be referenced from every future prototype and "Forge" is literally in
-> *The Exile's Forge*'s title. Candidates: `Loom`, `Anvil`, `Aether`, etc.
-> Pick one and global-replace before step 1. This doc uses `Forge.*`
-> throughout as a stand-in.
+> **Engine name: UO Architect Engine**, root namespace **`UOA`**. Assemblies
+> `UOA.Engine` (game-agnostic framework) and `UOA.World` (UO isometric-world
+> toolkit). The game stays `The Exile's Forge` / namespace `TEF` and becomes
+> the engine's first consumer.
 
 ## 1. Problem
 
@@ -28,10 +26,11 @@ reverse) so multiple prototypes can share one evolving foundation.
 
 ## 2. Goals
 
-- Extract a reusable, **game-agnostic** framework into its own assembly(ies)
-  that any number of prototypes can reference, with the engine/game boundary
-  enforced by the compiler (separate assemblies), not by convention.
-- `ExilesForge` becomes the **first consumer** of the framework - the best
+- Extract a reusable, **game-agnostic** framework (**UO Architect Engine**,
+  namespace `UOA`) into its own assembly(ies) that any number of prototypes can
+  reference, with the engine/game boundary enforced by the compiler (separate
+  assemblies), not by convention.
+- `ExilesForge` becomes the **first consumer** of the engine - the best
   possible test that the seam is in the right place - with no user-visible
   behavior change (same rendering, same UI, same save/config).
 - Provide the extendability the user called out explicitly:
@@ -56,7 +55,7 @@ reverse) so multiple prototypes can share one evolving foundation.
   actual Lua/JS engine is a separate future item. (Leaning MoonSharp/Lua -
   pure C#, no native deps, sandboxable - when the time comes.)
 - **No second prototype is built this phase.** This only extracts and proves
-  the framework against TEF.
+  the engine against TEF.
 - **No gray-zone speculative extraction.** The generic entity registry
   (`EntityWorld`/`Components`) is ECS-ish scaffolding that *might* be reusable,
   but until a second prototype actually needs it, it stays in the game
@@ -74,22 +73,26 @@ Three layers above the shared ClassicUO libs, dependencies pointing **up only**:
 ```
 ClassicUO.Assets / .Renderer / .IO / .Utility + FNA
         ▲
-   Forge.Engine     game-agnostic: host, scenes, input, UI/gumps, audio,
-        ▲                          UO content provider, config, save, script seam
-   Forge.World      UO isometric-world toolkit: map reader, TileRenderer,
+   UOA.Engine       UO Architect Engine (namespace UOA): game-agnostic host,
+        ▲                          scenes, input, UI/gumps, audio, UO content
+        ▲                          provider, config, save, script seam
+   UOA.World        UO isometric-world toolkit: map reader, TileRenderer,
         ▲                          BlockMesh, camera, depth, picking, day/night
-   ExilesForge      the game: concrete scenes, gameplay, its save/config schema
-   <NextPrototype>  another game: references Forge.Engine (+ Forge.World if it
-                                   uses a UO map)
+   ExilesForge      the game (TEF): concrete scenes, gameplay, its save/config
+        ▲                          schema
+   <NextPrototype>  another game: references UOA.Engine (+ UOA.World if it uses
+                                   a UO map)
 ```
 
-`Forge.Engine` **must never** reference a game type. Separate assemblies make
-that a compile error, not a code-review nicety. `Forge.World` sits above the
-engine so a pure-UI or non-tile prototype can reference only `Forge.Engine`.
+`UOA.Engine` **must never** reference a game type. Separate assemblies make
+that a compile error, not a code-review nicety. `UOA.World` sits above the
+engine so a pure-UI or non-tile prototype can reference only `UOA.Engine`.
 
 ### 4.2 What moves where (from the current file layout)
 
-**→ `Forge.Engine`:**
+Engine/world files are renamed from `TEF.*` to `UOA.*`; the game keeps `TEF.*`.
+
+**→ `UOA.Engine` (namespace `UOA`):**
 - `Core/GameController.cs` → `GameHost` (batcher, graphics, sim/world clock,
   service wiring; owns only engine services)
 - `Core/{Time, SimulationClock, WorldClock}.cs`
@@ -101,11 +104,11 @@ engine so a pure-UI or non-tile prototype can reference only `Forge.Engine`.
   and every prototype here is UO-art-based)
 - `Persistence/{ConfigManager, SaveManager}.cs` → generalized (4.3, 4.4)
 
-**→ `Forge.World`:**
+**→ `UOA.World` (namespace `UOA.World`):**
 - `World/{WorldMap, TileRenderer, BlockMesh, DepthKey, StaticMeshFilter,
   PickResult, AnimatedStatics, DayNightOverlay}.cs`
 
-**Stays in `ExilesForge`:**
+**Stays in `ExilesForge` (namespace `TEF`):**
 - `Scenes/{TitleScene, SpawnSelectScene, WorldScene}.cs`
 - `World/{PlayerEntity, Direction}.cs`, `World/Entities/*`, `HarvestSystem`
 - `Persistence/SaveData.cs` (its schema), a game-specific config type
@@ -189,10 +192,11 @@ any prototype get the same services without the engine knowing about any game.
 
 ## 5. Rollout (incremental, each step builds + runs + is visually verified)
 
-1. Create `Forge.Engine.csproj`; move the pure-engine files; rename their
-   `TEF.*` namespaces to `Forge.*`; fix `ExilesForge` usings. **Build + run -
+1. Create `UOA.Engine.csproj`; move the pure-engine files; rename their
+   `TEF.*` namespaces to `UOA.*`; fix `ExilesForge` usings. **Build + run -
    must be visually identical to today.**
-2. Create `Forge.World.csproj`; move the UO-map toolkit. Build + run.
+2. Create `UOA.World.csproj`; move the UO-map toolkit (namespace `UOA.World`).
+   Build + run.
 3. Generalize config (4.3) and save (4.4); port TEF's schema onto the new
    APIs. Build + run; verify save/load round-trip and config read still work.
 4. `UIManager` window-management upgrades (4.5a). Build + run.
@@ -204,8 +208,8 @@ the project is left in a working, verified state.
 
 ## 6. Acceptance criteria
 
-- [ ] `Forge.Engine` and `Forge.World` build as separate assemblies; neither
-  references any `ExilesForge`/game type (verified: removing the game project
+- [ ] `UOA.Engine` and `UOA.World` build as separate assemblies; neither
+  references any `ExilesForge`/`TEF` type (verified: removing the game project
   still compiles the framework).
 - [ ] `ExilesForge` runs identically to pre-refactor: title → spawn select →
   world, harvesting, save/load, config, day/night, all debug toggles, the
@@ -219,15 +223,14 @@ the project is left in a working, verified state.
 - [ ] The `ControlFactory`/`IScriptHost` seam exists and is used to build at
   least one control, proving the data-driven path (no interpreter required).
 - [ ] A throwaway "hello scene" in a second, empty test project referencing
-  only `Forge.Engine` compiles and runs (proves the engine stands alone
-  without `Forge.World` or any game).
+  only `UOA.Engine` compiles and runs (proves the engine stands alone without
+  `UOA.World` or any game).
 
 ## 7. Open questions (not blocking design)
 
-- Final engine name (see banner).
 - Exact `IScriptHost` surface - settle when the interpreter is actually chosen;
   keep the interface minimal until then.
 - Whether `EngineSettings` keybinds and the input binding registry (4.6) share
   one serialized representation or stay separate.
-- When (not whether) to promote the entity registry to a `Forge.Gameplay`
+- When (not whether) to promote the entity registry to a `UOA.Gameplay`
   module - defer until a second prototype needs it (rule-of-three).

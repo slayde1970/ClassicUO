@@ -398,27 +398,29 @@ this good enough for now; the chunk-mesh redesign (item 1) and item 3
     growth issue for long sessions, not a correctness/perf regression
     today. Pick up when convenient.
 
-## Tier 4.5 — Forge Framework extraction
+## Tier 4.5 — UO Architect Engine extraction
 
-Full design: `Design/prd-forge-framework.md` (**design locked, not yet
+Full design: `Design/prd-uoa-engine.md` (**design locked, not yet
 implemented**). Rationale: the user wants to prototype several game ideas on
 the same ClassicUO shared assemblies before settling on a final design. Most
 of `ExilesForge/` is already game-agnostic; this tier draws the seam between
 "reusable engine" and "this game" and enforces the dependency direction so
-multiple prototypes share one evolving foundation. TEF becomes the framework's
+multiple prototypes share one evolving foundation. TEF becomes the engine's
 first consumer with no user-visible behavior change.
 
-Locked decisions (via design discussion): **separate assemblies** (compiler-
-enforced boundary), a **`Forge.World`** module for the UO isometric-world
-toolkit sitting above **`Forge.Engine`**, and a **participant/section save
-registry** (each game/system adds save data with zero engine changes). Engine
-name is a placeholder (`Forge.*`) - pick a game-neutral name before starting.
+Engine name: **UO Architect Engine**, root namespace **`UOA`**, assemblies
+`UOA.Engine` + `UOA.World`. Locked decisions (via design discussion):
+**separate assemblies** (compiler-enforced boundary), a **`UOA.World`** module
+for the UO isometric-world toolkit sitting above **`UOA.Engine`**, and a
+**participant/section save registry** (each game/system adds save data with
+zero engine changes).
 
-16. **Split out `Forge.Engine` + `Forge.World` assemblies** — move the game-
+16. **Split out `UOA.Engine` + `UOA.World` assemblies** — move the game-
     agnostic host/scenes/input/UI/audio/UO-content/config/save into
-    `Forge.Engine`; the UO map reader / `TileRenderer` / `BlockMesh` / camera /
-    depth / picking / day-night into `Forge.World`. Rename `TEF.*` → `Forge.*`
-    there; `ExilesForge` references both. Verify TEF runs identically.
+    `UOA.Engine`; the UO map reader / `TileRenderer` / `BlockMesh` / camera /
+    depth / picking / day-night into `UOA.World`. Rename `TEF.*` → `UOA.*`
+    there; `ExilesForge` (namespace `TEF`) references both. Verify TEF runs
+    identically.
 17. **Layered config + participant/section save** — `ConfigManager<TConfig>`
     (engine section + per-game section, app-name-parameterized), and a
     `SaveManager` driven by registered `ISaveParticipant`s. Port TEF's schema
