@@ -30,5 +30,6 @@ namespace TEF.Input
         ToggleTerrainLighting, // debug: toggle stretched-land directional shading on/off (Brightlight) for comparison
         DebugAdvanceTime, // debug: jump the world clock forward 1 in-game hour, to check day/night without waiting
         DebugToggleDepthTest, // debug: A/B toggle for the Tier 4 #13 GPU depth-buffer work
+        ToggleRoofHide, // toggle auto-hiding of roofs/upper floors when the player walks under them (Tier 4.5)
     }
 }

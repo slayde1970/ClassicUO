@@ -10,6 +10,7 @@ using UOA.Core;
 using UOA.Input;
 using UOA.Persistence;
 using UOA.Scenes;
+using UOA.Scripting;
 using TEF.Input;
 using TEF.Persistence;
 using UOA.UI;
@@ -65,6 +66,12 @@ namespace TEF.Scenes
 
         private const int MapIndex = 0;
 
+        // Roof-hiding (Tier 4.5): map statics at or above (player.Z + this) are
+        // hidden so the player can see into whatever they've walked under. A
+        // fixed clearance above the player, not the overhead object's own Z, so
+        // it doesn't flicker as roof-tile heights vary across a building.
+        private const int RoofHideHeight = 10;
+
         // Tier 4 #13 - tried CompareFunction.GreaterEqual here (reasoning
         // that DepthKey.Compute assigns LARGER values to things meant to
         // draw later/in front) to explain a ground-level-static (stone
@@ -92,6 +99,7 @@ namespace TEF.Scenes
         private bool _drawMapStatics = true; // F7 - independent of F6, entities always draw regardless of either
         private bool _terrainLightingEnabled = true; // Ctrl+L - for comparing stretched-land shading on/off
         private bool _depthTestEnabled = true; // F11 - A/B toggle for the Tier 4 #13 GPU depth-buffer work
+        private bool _roofHideEnabled;  // F12 - auto-hide roofs when the player is under them; enabled on scene load (Tier 4.5)
 
         // What the cursor was over, produced by Draw and consumed on the next
         // frame's Update (one-frame lag - see PickResult). Tracked separately
@@ -123,6 +131,14 @@ namespace TEF.Scenes
         private int _woodCollected;
         private bool _resourcePanelPositioned;
 
+        // Script-readiness seam (Tier 4.5): the resource panel's controls are
+        // built via the type-name factory + string-property setter, and the
+        // Reset button dispatches through this host by action name - the exact
+        // path a future markup/Lua loader will use, exercised here with no
+        // interpreter.
+        private readonly ControlFactory _controls = ControlFactory.CreateDefault();
+        private readonly DelegateScriptHost _scriptHost = new();
+
         // See Design/prd-persistence.md 4.4 - autosave uses render Delta (not
         // the fixed sim tick) since its timing has no gameplay-determinism
         // requirement; a simple accumulator is enough.
@@ -151,11 +167,26 @@ namespace TEF.Scenes
 
         private void BuildResourcePanel()
         {
-            _resourcePanel.Children.Add(new Label { Text = "Resources", X = 10, Y = 8 });
+            // Named action the "Reset" button dispatches to (a markup loader
+            // would read onClick="resetWood" and wire the same way).
+            _scriptHost.Register("resetWood", () => _woodCollected = 0);
+
+            // Title label: created by type-name, properties set by name.
+            var title = _controls.Create("Label");
+            ControlProperties.Set(title, "Text", "Resources");
+            ControlProperties.Set(title, "X", 10);
+            ControlProperties.Set(title, "Y", 8);
+            _resourcePanel.Children.Add(title);
+
             _resourcePanel.Children.Add(_woodLabel);
 
-            var resetButton = new Button("Reset") { X = 10, Y = 52 };
-            resetButton.Clicked += () => _woodCollected = 0;
+            // Reset button: same data-driven construction, click dispatched by
+            // action name through the script host.
+            var resetButton = (Button)_controls.Create("Button");
+            ControlProperties.Set(resetButton, "Text", "Reset");
+            ControlProperties.Set(resetButton, "X", 10);
+            ControlProperties.Set(resetButton, "Y", 52);
+            resetButton.Clicked += () => _scriptHost.Invoke("resetWood");
             _resourcePanel.Children.Add(resetButton);
 
             Ui.Add(_resourcePanel);
@@ -174,6 +205,10 @@ namespace TEF.Scenes
             Camera.Zoom = 1f;
             _map = new WorldMap(Game.Assets, MapIndex);
             _animatedStatics.Initialize(Game.Assets);
+
+            // Roof-hiding is on from the moment the world scene loads (F12
+            // toggles it thereafter) - Tier 4.5.
+            _roofHideEnabled = true;
 
             RegisterSaveSections();
 
@@ -389,6 +424,24 @@ namespace TEF.Scenes
             {
                 _depthTestEnabled = !_depthTestEnabled;
             }
+
+            if (input.IsActionPressed(GameAction.ToggleRoofHide))
+            {
+                _roofHideEnabled = !_roofHideEnabled;
+            }
+
+            // Roof-hiding (Tier 4.5): only when the player is actually under a
+            // covering (roof/upper floor) on their own tile - matching how
+            // ClassicUO gates roof-hiding so buildings you're merely standing
+            // NEXT to keep their roofs - hide statics a fixed height above the
+            // player. The cutoff is a flat player.Z + RoofHideHeight (not the
+            // overhead object's own Z) so it stays stable as the player walks
+            // under sloped/varied roof tiles instead of popping in and out.
+            int playerTileX = (int)MathF.Floor(_player.WorldPosition.X);
+            int playerTileY = (int)MathF.Floor(_player.WorldPosition.Y);
+            _tiles.StaticZCutoff = _roofHideEnabled && _map.IsUnderRoof(playerTileX, playerTileY, _player.Z, RoofHideHeight)
+                ? _player.Z + RoofHideHeight
+                : null;
 
             if (input.IsActionPressed(GameAction.ToggleDebugInfo))
             {

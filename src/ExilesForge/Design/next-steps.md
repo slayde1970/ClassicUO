@@ -398,10 +398,11 @@ this good enough for now; the chunk-mesh redesign (item 1) and item 3
     growth issue for long sessions, not a correctness/perf regression
     today. Pick up when convenient.
 
-## Tier 4.5 — UO Architect Engine extraction
+## Tier 4.5 — UO Architect Engine extraction — **DONE**
 
-Full design: `Design/prd-uoa-engine.md` (**design locked, not yet
-implemented**). Rationale: the user wants to prototype several game ideas on
+Full design: `Design/prd-uoa-engine.md` (**complete, user-verified**; see its
+section 5 for the per-step record). Rationale: the user wants to prototype
+several game ideas on
 the same ClassicUO shared assemblies before settling on a final design. Most
 of `ExilesForge/` is already game-agnostic; this tier draws the seam between
 "reusable engine" and "this game" and enforces the dependency direction so
@@ -415,25 +416,39 @@ for the UO isometric-world toolkit sitting above **`UOA.Engine`**, and a
 **participant/section save registry** (each game/system adds save data with
 zero engine changes).
 
-16. **Split out `UOA.Engine` + `UOA.World` assemblies** — move the game-
-    agnostic host/scenes/input/UI/audio/UO-content/config/save into
-    `UOA.Engine`; the UO map reader / `TileRenderer` / `BlockMesh` / camera /
-    depth / picking / day-night into `UOA.World`. Rename `TEF.*` → `UOA.*`
-    there; `ExilesForge` (namespace `TEF`) references both. Verify TEF runs
-    identically.
-17. **Layered config + participant/section save** — `ConfigManager<TConfig>`
-    (engine section + per-game section, app-name-parameterized), and a
-    `SaveManager` driven by registered `ISaveParticipant`s. Port TEF's schema
-    onto both.
-18. **UI gump parity + script-ready seam** — extend `UIManager` with CUO-style
-    window management (named/typed lookup, modal/focus stack, `BringToFront`,
-    dragging, open/close), plus a `ControlFactory` + string-addressable
-    properties/events + `IScriptHost` interface so a Lua/TS layer can drive the
-    UI later without re-architecting. No interpreter this phase. Also move the
-    game action set onto a string/int **input binding registry** (out of the
-    engine).
+16. **[DONE] Split out `UOA.Engine` + `UOA.World` assemblies** — game-agnostic
+    host/scenes/input/UI/audio/UO-content/config/save in `UOA.Engine`; the UO
+    map reader / `TileRenderer` / `BlockMesh` / camera / depth / picking /
+    day-night in `UOA.World` (`TileRenderer` decoupled from the game's player/
+    entities via `IWorldPlayer`/`IWorldEntitySource`). `ExilesForge` (namespace
+    `TEF`) references both; both build standalone with zero game refs.
+17. **[DONE] Layered config + participant/section save** — generic
+    `ConfigManager<TConfig>` (engine `EngineSettings` section + game section,
+    app-name-parameterized) and a `SaveManager` driven by registered
+    `ISaveParticipant`s (`SaveSection` lambdas). Both file formats changed;
+    Program self-heals a legacy/empty config.
+18. **[DONE] UI gump parity + script-ready seam** — `UIManager` gained
+    named/typed lookup, modal stack, `BringToFront`, dragging, open/close
+    lifecycle; `Scene` owns a shared `Ui`. Plus `ControlFactory` +
+    `ControlProperties` (string-addressable) + `IScriptHost`/`DelegateScriptHost`
+    so a Lua/TS layer can drive the UI later (no interpreter yet). The input
+    binding registry (game action set off the engine) was folded into step 16.
+    Remaining optional follow-up: persist key rebinds to `config.json` when a
+    rebinding UI exists.
 
-(See the PRD's section 5 for the incremental, verify-each-step rollout order.)
+(See the PRD's section 5 for the incremental, verify-each-step rollout record.)
+
+19. **[DONE] Roof-hiding / static Z-cutoff** (engine enhancement in `UOA.World`,
+    added after the extraction). `TileRenderer.StaticZCutoff` hides map statics
+    at/above a Z from the mesh, per-object draw, and picking;
+    `StaticCutoffFilter` (`StaticCutoffMode.Roofs` default / `All`) controls
+    what's culled — **Roofs** hides only `IsRoof` tiles (floors, walls, decor
+    all stay), **All** peels every static (reserved for a future statics-editor
+    / building designer). Gameplay policy (WorldScene): gated on
+    `WorldMap.IsUnderRoof` (player's own tile + SE neighbor, like ClassicUO's
+    `UpdateMaxDrawZ`) so you only hide the roof you're actually under; cutoff is
+    a flat `player.Z + 10` (no flicker as roof heights vary). On at scene load,
+    F12 toggles.
 
 ## Tier 5 — reserved
 

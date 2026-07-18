@@ -9,6 +9,18 @@ using UOA.Assets;
 namespace UOA.World
 {
     /// <summary>
+    /// What a <see cref="TileRenderer.StaticZCutoff"/> hides (Tier 4.5).
+    /// </summary>
+    public enum StaticCutoffMode
+    {
+        /// <summary>Hide only roof tiles at/above the cutoff - floor surfaces (incl. a raised building's floor), walls, and interior decorations all stay visible. The default, used for player-walks-under-a-roof hiding, matching ClassicUO's roof cull.</summary>
+        Roofs,
+
+        /// <summary>Hide every static at/above the cutoff. For a statics editor / building designer that wants to peel off whole levels.</summary>
+        All,
+    }
+
+    /// <summary>
     /// Draws the world floor under the player: land tiles and the statics
     /// (walls, trees, floors, deco) that sit on top of them. Tile/static data
     /// comes from a shared <see cref="WorldMap"/>; this class is purely the
@@ -71,6 +83,20 @@ namespace UOA.World
         public int MeshedBlockDraws { get; private set; }
         public int MeshedLandQuads { get; private set; }
         public int MeshedStaticQuads { get; private set; }
+
+        /// <summary>
+        /// Roof-hiding cutoff (Tier 4.5): when set, MAP statics with Z at or
+        /// above this value are hidden - from the mesh, the per-object draw,
+        /// AND picking. Null shows everything. The caller decides the value:
+        /// automatically from the player being under a roof (see
+        /// WorldMap.FindCeilingCutoff), or explicitly for a statics editor /
+        /// building designer that wants to peel off upper levels. Entities and
+        /// the player are never affected.
+        /// </summary>
+        public int? StaticZCutoff;
+
+        /// <summary>What the cutoff hides (default: roofs only, so floors and interior decorations aren't culled). See StaticCutoffMode.</summary>
+        public StaticCutoffMode StaticCutoffFilter = StaticCutoffMode.Roofs;
 
         /// <param name="entities">Live world entities (resource nodes, etc.) to interleave into the same pass, in the same tuple shape as map statics. May be null to skip entirely.</param>
         /// <param name="player">The player, drawn interleaved into the back-to-front pass on its own tile so statics on tiles in front of it can occlude it. May be null.</param>
@@ -176,7 +202,7 @@ namespace UOA.World
                 for (int bx = blockX0; bx <= blockX1; bx++)
                 {
                     var blockMesh = map.GetOrBuildBlockMesh(bx, by);
-                    blockMesh.Draw(batcher, meshOffsetX, meshOffsetY, drawStatics);
+                    blockMesh.Draw(batcher, meshOffsetX, meshOffsetY, drawStatics, StaticZCutoff, StaticCutoffFilter);
                     MeshedBlockDraws++;
                     MeshedLandQuads += blockMesh.LandQuadCount;
                     MeshedStaticQuads += blockMesh.StaticQuadCount;
@@ -372,6 +398,20 @@ namespace UOA.World
                     continue;
                 }
 
+                // Roof-hiding (Tier 4.5): hide MAP statics at/above the cutoff -
+                // skips both the per-object draw below and TestStaticPick, so a
+                // hidden roof can't be drawn OR clicked. Mesh-baked statics are
+                // hidden by BlockMesh via the same cutoff. In Roofs mode only
+                // roof tiles are culled (floors/decorations stay); entities
+                // (EntityId != 0) are never hidden.
+                if (s.EntityId == 0
+                    && StaticZCutoff is int zCut
+                    && s.Z >= zCut
+                    && (StaticCutoffFilter == StaticCutoffMode.All || IsRoof(assets, s.Graphic)))
+                {
+                    continue;
+                }
+
                 // The base graphic drives hue/name/tiledata lookups (s.HueVector
                 // is already baked from it); only the ART lookup uses the
                 // current animation-frame offset, matching View.DrawStaticAnimated's
@@ -516,6 +556,21 @@ namespace UOA.World
         /// </summary>
         // internal (not private) so BlockMesh (Tier 4 #13) can reuse this
         // exact port instead of duplicating it.
+        // Roof-hiding (Tier 4.5): only roof tiles are culled by the cutoff in
+        // Roofs mode - see StaticCutoffMode / BlockMesh's per-quad Hideable flag
+        // (this is the per-object-path equivalent).
+        private static bool IsRoof(GameAssets assets, ushort graphic)
+        {
+            var staticData = assets.Files.TileData.StaticData;
+            if (graphic >= staticData.Length)
+            {
+                return false;
+            }
+
+            ref readonly var data = ref staticData[graphic];
+            return data.IsRoof;
+        }
+
         internal static bool TryBuildStretch(
             WorldMap map, int x, int y, sbyte z,
             out UltimaBatcher2D.YOffsets yOffsets,

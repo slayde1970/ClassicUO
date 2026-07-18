@@ -6,7 +6,7 @@ using UOA.Input;
 
 namespace UOA.UI.Controls
 {
-    /// <summary>A clickable Panel with a centered-by-padding label. Sizes itself from the label text once at construction - if the text can change later, rebuild the button rather than mutating Text in place (keeps padding/sizing simple for this first pass).</summary>
+    /// <summary>A clickable Panel with a centered-by-padding label, auto-sized from its <see cref="Text"/>. Setting Text re-sizes in place, so it can be built parameterless (e.g. via ControlFactory, Tier 4.5) and have its text assigned as a string property afterward.</summary>
     public sealed class Button : Panel
     {
         private const int PaddingX = 12;
@@ -14,8 +14,24 @@ namespace UOA.UI.Controls
 
         private readonly Color _normalColor;
         private readonly Color _hoverColor;
+        private readonly Label _label;
 
         public event Action Clicked;
+
+        /// <summary>Button caption. Assigning it re-measures and resizes the button.</summary>
+        public string Text
+        {
+            get => _label.Text;
+            set
+            {
+                _label.Text = value ?? string.Empty;
+                Resize();
+            }
+        }
+
+        public Button() : this(string.Empty)
+        {
+        }
 
         public Button(string text, Color? normalColor = null, Color? hoverColor = null)
         {
@@ -23,10 +39,15 @@ namespace UOA.UI.Controls
             _hoverColor = hoverColor ?? new Color(95, 95, 95, 230);
             BackgroundColor = _normalColor;
 
-            var label = new Label { Text = text, X = PaddingX, Y = PaddingY };
-            Children.Add(label);
+            _label = new Label { Text = text, X = PaddingX, Y = PaddingY };
+            Children.Add(_label);
 
-            var size = ClassicUO.Renderer.Fonts.Bold.MeasureString(text);
+            Resize();
+        }
+
+        private void Resize()
+        {
+            var size = ClassicUO.Renderer.Fonts.Bold.MeasureString(_label.Text);
             Width = (int)size.X + PaddingX * 2;
             Height = (int)size.Y + PaddingY * 2;
         }

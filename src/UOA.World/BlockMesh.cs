@@ -62,7 +62,20 @@ namespace UOA.World
         private UltimaBatcher2D.PositionNormalTextureColor4[] _staticVertices = Array.Empty<UltimaBatcher2D.PositionNormalTextureColor4>();
         private Texture2D[] _staticTextures = Array.Empty<Texture2D>();
         private bool[] _staticVisible = Array.Empty<bool>();
+        private int[] _staticQuadZ = Array.Empty<int>();
+        // Per-quad: is this a roof tile? Used so Roofs-mode hiding only culls
+        // roofs - never floor surfaces (a raised building's floor can sit well
+        // above the player standing at its base), walls, or the decorations on
+        // shelves and tables below the roof.
+        private bool[] _staticQuadHideable = Array.Empty<bool>();
         private int _staticCount;
+
+        // The (cutoff, mode) currently reflected in _staticVisible (Tier 4.5
+        // roof-hiding): null cutoff = all visible. Only recomputed when either
+        // changes, so it's free on the vast majority of frames (the player is
+        // either not under a roof, or under one at a fixed Z).
+        private int? _appliedCutoff;
+        private StaticCutoffMode _appliedMode;
 
         public bool IsBuilt { get; private set; }
 
@@ -76,7 +89,7 @@ namespace UOA.World
         public void Build(WorldMap map, GameAssets assets, int blockX, int blockY)
         {
             var landQuads = new List<(UltimaBatcher2D.PositionNormalTextureColor4 Vertex, Texture2D Texture)>(WorldMap.BlockSize * WorldMap.BlockSize);
-            var staticQuads = new List<(UltimaBatcher2D.PositionNormalTextureColor4 Vertex, Texture2D Texture)>();
+            var staticQuads = new List<(UltimaBatcher2D.PositionNormalTextureColor4 Vertex, Texture2D Texture, int Z, bool Hideable)>();
 
             int baseX = blockX * WorldMap.BlockSize;
             int baseY = blockY * WorldMap.BlockSize;
@@ -94,7 +107,7 @@ namespace UOA.World
             }
 
             _landCount = FillFrom(landQuads, ref _landVertices, ref _landTextures, ref _landVisible);
-            _staticCount = FillFrom(staticQuads, ref _staticVertices, ref _staticTextures, ref _staticVisible);
+            _staticCount = FillStaticsFrom(staticQuads);
 
             IsBuilt = true;
         }
@@ -128,7 +141,62 @@ namespace UOA.World
             return count;
         }
 
-        public void Draw(UltimaBatcher2D batcher, int offsetX, int offsetY, bool drawStatics)
+        // Same texture-bucketing as FillFrom, but also carries each quad's
+        // world Z and roof/surface flag (parallel to the vertex array,
+        // surviving the texture sort) so the Z-cutoff can flip per-quad
+        // visibility later without a rebuild.
+        private int FillStaticsFrom(
+            List<(UltimaBatcher2D.PositionNormalTextureColor4 Vertex, Texture2D Texture, int Z, bool Hideable)> quads)
+        {
+            quads.Sort(static (a, b) => a.Texture.GetHashCode().CompareTo(b.Texture.GetHashCode()));
+
+            int count = quads.Count;
+            _staticVertices = new UltimaBatcher2D.PositionNormalTextureColor4[count];
+            _staticTextures = new Texture2D[count];
+            _staticVisible = new bool[count];
+            _staticQuadZ = new int[count];
+            _staticQuadHideable = new bool[count];
+
+            for (int i = 0; i < count; i++)
+            {
+                _staticVertices[i] = quads[i].Vertex;
+                _staticTextures[i] = quads[i].Texture;
+                _staticVisible[i] = true;
+                _staticQuadZ[i] = quads[i].Z;
+                _staticQuadHideable[i] = quads[i].Hideable;
+            }
+
+            return count;
+        }
+
+        // Flip per-quad static visibility for a Z-cutoff (Tier 4.5 roof-hiding):
+        // a quad is hidden when its Z is at or above the cutoff AND - in Roofs
+        // mode - it's actually a roof (so floors and interior decorations below
+        // the roof are never hidden). No-op when (cutoff, mode) is unchanged,
+        // so it's essentially free per frame.
+        private void ApplyStaticCutoff(int? cutoff, StaticCutoffMode mode)
+        {
+            if (cutoff == _appliedCutoff && mode == _appliedMode)
+            {
+                return;
+            }
+
+            for (int i = 0; i < _staticCount; i++)
+            {
+                bool hidden = cutoff is int c
+                    && _staticQuadZ[i] >= c
+                    && (mode == StaticCutoffMode.All || _staticQuadHideable[i]);
+
+                _staticVisible[i] = !hidden;
+            }
+
+            _appliedCutoff = cutoff;
+            _appliedMode = mode;
+        }
+
+        /// <param name="staticZCutoff">Hide meshed statics with Z at or above this value (Tier 4.5 roof-hiding); null shows all.</param>
+        /// <param name="cutoffMode">Whether the cutoff hides only roofs/surfaces or every static (see StaticCutoffMode).</param>
+        public void Draw(UltimaBatcher2D batcher, int offsetX, int offsetY, bool drawStatics, int? staticZCutoff, StaticCutoffMode cutoffMode)
         {
             if (_landCount > 0)
             {
@@ -137,13 +205,14 @@ namespace UOA.World
 
             if (drawStatics && _staticCount > 0)
             {
+                ApplyStaticCutoff(staticZCutoff, cutoffMode);
                 batcher.DrawBatch(_staticVertices, _staticTextures, _staticVisible, _staticCount, offsetX, offsetY);
             }
         }
 
         private static void AddStaticQuads(
             WorldMap map, GameAssets assets, int tx, int ty,
-            List<(UltimaBatcher2D.PositionNormalTextureColor4 Vertex, Texture2D Texture)> quads)
+            List<(UltimaBatcher2D.PositionNormalTextureColor4 Vertex, Texture2D Texture, int Z, bool Hideable)> quads)
         {
             const int TileSize = TileRenderer.TileSize;
 
@@ -182,8 +251,14 @@ namespace UOA.World
                 float drawY = baseY - (s.Z << 2) - offY;
                 var position = new Vector2(drawX, drawY);
 
+                // Only roofs are eligible for roof-hiding; floor surfaces,
+                // walls, and decorations/items are never culled by the cutoff
+                // (in Roofs mode). See StaticCutoffMode.
+                ref readonly var data = ref assets.Files.TileData.StaticData[s.Graphic];
+                bool hideable = data.IsRoof;
+
                 var vertex = BuildFlatQuad(sprite.Texture, position, sprite.UV, s.HueVector, DepthKey.Compute(tx, ty, s.PriorityZ));
-                quads.Add((vertex, sprite.Texture));
+                quads.Add((vertex, sprite.Texture, s.Z, hideable));
             }
         }
 

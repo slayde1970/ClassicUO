@@ -233,6 +233,52 @@ namespace UOA.World
         }
 
         /// <summary>
+        /// Roof-hiding gate (Tier 4.5): is the player standing under a covering
+        /// (a roof or upper-floor surface) at tile (x, y)? Ported from the way
+        /// ClassicUO's UpdateMaxDrawZ decides whether to hide roofs at all - it
+        /// scans the player's own tile (and the SE-adjacent one, since an iso
+        /// roof can be anchored a tile over) for a roof/surface static sitting
+        /// at least <paramref name="clearance"/> above the player's feet. Only
+        /// when one exists should statics above the player be hidden; out in the
+        /// open this returns false so nearby buildings keep their roofs. The
+        /// cutoff VALUE stays a flat player.Z + clearance (caller's choice) so
+        /// it doesn't flicker as roof-tile heights vary underfoot.
+        /// </summary>
+        public bool IsUnderRoof(int x, int y, sbyte footZ, int clearance)
+        {
+            return HasCeilingAbove(x, y, footZ, clearance)
+                || HasCeilingAbove(x + 1, y + 1, footZ, clearance);
+        }
+
+        private bool HasCeilingAbove(int x, int y, sbyte footZ, int clearance)
+        {
+            var statics = GetStaticsAt(x, y);
+            if (statics == null)
+            {
+                return false;
+            }
+
+            var staticData = _assets.Files.TileData.StaticData;
+            int threshold = footZ + clearance;
+
+            foreach (var s in statics)
+            {
+                if (s.Z < threshold || s.Graphic >= staticData.Length)
+                {
+                    continue;
+                }
+
+                ref readonly var data = ref staticData[s.Graphic];
+                if (data.IsRoof || data.IsSurface)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
         /// Resolves the Z the player would stand at on tile (x, y) coming from
         /// height <paramref name="fromZ"/>, and whether the tile is walkable
         /// at all. A tile is walkable if it has a standable surface (passable

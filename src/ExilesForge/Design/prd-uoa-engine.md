@@ -1,8 +1,9 @@
 # PRD: UO Architect Engine Extraction (Tier 4.5)
 
-Status: **In progress.** Steps 1-4 (extract `UOA.Engine` + `UOA.World`;
-generalize config + save; UI window management) done and verified; step 5
-pending, step 6 largely folded into step 1.
+Status: **Complete.** Steps 1-5 done and user-verified; step 6's core (input
+binding registry) was folded into step 1, leaving only optional config-driven
+rebinds (deferred until a rebinding UI exists). TEF runs on the extracted
+`UOA.Engine` + `UOA.World` with no behavior change.
 
 > **Engine name: UO Architect Engine**, root namespace **`UOA`**. Assemblies
 > `UOA.Engine` (game-agnostic framework) and `UOA.World` (UO isometric-world
@@ -240,31 +241,46 @@ any prototype get the same services without the engine knowing about any game.
    top-right once, then drag-to-move + raise-to-front); the New Game confirm
    dialog is `IsModal` (blocks the title buttons underneath via the manager
    rather than the dim panel).
-5. `ControlFactory` + `IScriptHost` seam (4.5b), no interpreter. Build + run.
-6. Input binding registry (4.6); port TEF's `GameAction` set onto it. Build + run.
+5. **[DONE]** `ControlFactory` + `IScriptHost` seam (4.5b), no interpreter.
+   Build + run - user-verified. `ControlFactory` (type-name -> ctor registry,
+   `CreateDefault` for the built-ins), `ControlProperties.Set` (reflection +
+   coercion string-property setter), `IScriptHost` + `DelegateScriptHost`
+   (`UOA.Scripting`) for name-dispatched actions. `Button` gained a
+   parameterless ctor + settable `Text` so it's factory-constructible.
+   Exercised in TEF: the Resources panel's title label + Reset button are built
+   via the factory + string properties, and the button dispatches
+   `Invoke("resetWood")` through the host.
+6. **[CORE DONE in step 1]** Input binding registry (4.6): `InputManager` is
+   already int-keyed and TEF's `GameAction` set is ported onto it via the
+   `InputActions` extension shim. Remaining (deferred, no consumer yet):
+   persist rebinds to `config.json` - add when a rebinding UI exists.
 
 Each step is independently shippable. If any step is a bad time to continue,
 the project is left in a working, verified state.
 
 ## 6. Acceptance criteria
 
-- [ ] `UOA.Engine` and `UOA.World` build as separate assemblies; neither
-  references any `ExilesForge`/`TEF` type (verified: removing the game project
-  still compiles the framework).
-- [ ] `ExilesForge` runs identically to pre-refactor: title → spawn select →
+- [x] `UOA.Engine` and `UOA.World` build as separate assemblies; neither
+  references any `ExilesForge`/`TEF` type (verified: both compile standalone;
+  only `TEF.` left in engine code is a comment).
+- [x] `ExilesForge` runs identically to pre-refactor: title → spawn select →
   world, harvesting, save/load, config, day/night, all debug toggles, the
-  chunk-mesh renderer and picking - all unchanged, visually verified.
-- [ ] Config: TEF's settings load/save through `ConfigManager<TefConfig>` with
-  the engine section split out; hand-editing the file still round-trips.
-- [ ] Save: TEF's data persists via registered `ISaveParticipant`s; a
-  partial/older save (missing a section) loads without throwing.
-- [ ] UI: at least one existing gump (the Resources panel) works through the
-  upgraded `UIManager` with a named lookup + z-order path exercised.
-- [ ] The `ControlFactory`/`IScriptHost` seam exists and is used to build at
-  least one control, proving the data-driven path (no interpreter required).
+  chunk-mesh renderer and picking - all unchanged, verified across steps 1-5.
+- [x] Config: TEF's settings load/save through `ConfigManager<TefConfig>` with
+  the engine section split out; hand-editing the file still round-trips (plus
+  self-heal for a missing/empty engine section).
+- [x] Save: TEF's data persists via registered `ISaveParticipant`s; `SaveManager.Load`
+  skips sections a participant didn't find, so a partial/older save doesn't throw.
+- [x] UI: the Resources panel works through the upgraded `UIManager` - it's
+  named (`"resources"`) and its z-order path is exercised (drag raises it via
+  `BringToFront`). `GetByName`/`GetGump<T>` available for consumers.
+- [x] The `ControlFactory`/`IScriptHost` seam exists and builds the Resources
+  panel's label + button data-drivenly, dispatching the click by name - no
+  interpreter.
 - [ ] A throwaway "hello scene" in a second, empty test project referencing
-  only `UOA.Engine` compiles and runs (proves the engine stands alone without
-  `UOA.World` or any game).
+  only `UOA.Engine`. NOT built - the standalone compile of `UOA.Engine` already
+  proves independence; the real second-consumer proof lands when the next
+  prototype is created.
 
 ## 7. Open questions (not blocking design)
 
