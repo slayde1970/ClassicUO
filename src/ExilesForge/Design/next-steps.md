@@ -460,12 +460,12 @@ zero engine changes).
     world / Pointer over UI. **Next (deferred): cursor-based movement** — click/
     hold in the world to walk in the pointed 8-direction, alongside WASD, UO-style.
 
-## Tier 4.6 — Rendering correctness fixes
+## Tier 4.6 — Rendering correctness fixes + mouse movement — **DONE**
 
 Post-refactor cleanup: three depth/occlusion issues found once the chunk-mesh
-renderer, roof-hiding, and cursor were all in. Each is a correctness bug in
-`UOA.World` (the reusable renderer), not TEF-specific. User will supply
-side-by-side ClassicUO comparison screenshots for #21 and #23.
+renderer, roof-hiding, and cursor were all in (each a correctness bug in
+`UOA.World`, the reusable renderer), plus the mouse-movement feature and a
+player-animation tweak. All items (#21-#24) done and user-verified.
 
 21. **[DONE] 2-story building roof-hide correctness.** Confirmed via
     TEF-vs-ClassicUO comparison: at a 2-story ground floor CUO lifts the ENTIRE
@@ -491,22 +491,34 @@ side-by-side ClassicUO comparison screenshots for #21 and #23.
     per-object paths key depth off `DepthZ`; entity tiles set `DepthZ =
     PriorityZ`. Rug now reliably draws atop the floor. User-verified.
 
-23. **Player-feet vs land-tile Z-fighting at tile boundaries.** The player's
-    feet get covered by the top-middle of the land tile in front until the
-    player walks past that tile's centre. Root cause is exactly the sub-tile
-    nudge `DepthKey` deliberately skipped (see its doc comment): the player's
-    depth is computed from `floor(WorldPosition)` - quantized to the tile - so
-    while the player moves across a tile toward its front edge, their depth
-    stays at the back tile's value even though they're visually standing in the
-    front tile's diamond, letting the front land tile's upper corner occlude
-    their feet. ClassicUO's `View.CalculateDepthZ` nudges `x`/`y`/`z` by the
-    object's sub-tile screen `Offset` (the +1-to-whichever-coordinate-it-leans
-    quadrant logic) precisely for continuously-moving objects like the player.
-    Fix: give the player (and any future moving entity) a depth derived from its
-    **fractional** world position / movement offset rather than the floored
-    tile - port the offset-quadrant nudge, or bias the player's `priorityZ`/tile
-    coords by its sub-tile progress so the depth transitions smoothly as it
-    crosses a tile boundary.
+23. **[DONE] Player-feet vs land-tile Z-fighting at tile boundaries.** Confirmed
+    via TEF-vs-ClassicUO comparison (CUO keeps the feet on top at the same spot).
+    Root cause was the sub-tile nudge `DepthKey` deliberately skipped: the player
+    depth used `floor(WorldPosition)`, quantizing to the tile, so while the
+    player stood in the front half of a tile the front land tile's upper corner
+    won the depth test and clipped the feet. Fix: new `DepthKey.ComputeMoving(
+    worldX, worldY, priorityZ)` keys off the ROUNDED iso diagonal
+    (`floor(x + y + 0.5)`) of the player's fractional position, so once past a
+    tile's centre the player jumps to the diagonal it's entering and stays in
+    front of the land ahead; `priorityZ` (Z+1) still sorts it within a diagonal
+    (above land, below walls) so wall/building occlusion is preserved.
+    `PlayerEntity.Draw` now uses it. User-verified (feet clean, occlusion intact).
+
+24. **[DONE] Mouse-based player movement (right-click-to-run), ClassicUO-style.**
+    Right-mouse held → player moves toward the cursor on the same 8-direction
+    grid + collision path as WASD (WASD takes priority). Direction = cursor
+    offset from screen centre, snapped to 8 via `DirectionHelper.SnapTo8`; raw
+    distance drives the speed: dead-zone < 18px (no move), walk 18-120px, run
+    beyond 120px (transition walk↔run by cursor distance, no Shift). Right-click
+    *tap* = UO turn-or-step (step if already facing that way, else just turn),
+    suppressed when the click starts over UI or an interactable entity (reserved
+    for a future interact/context action). Shared movement extracted into
+    `PlayerEntity.MoveScreen`/`StepScreen`/`FaceScreen`/`FacingFor`;
+    `Update` now returns whether WASD moved; `WorldScene.HandleMouseMovement`
+    orchestrates. **Also fixed player animation (Tier 4.6 tweak):** added
+    `PlayerEntity.IsRunning`, so running uses `PeopleAnimationGroup.RunUnarmed`
+    (was always WalkUnarmed) and a faster frame delay (walk 150→120ms, run
+    80ms). User-verified.
 
 ## Tier 5 — reserved
 

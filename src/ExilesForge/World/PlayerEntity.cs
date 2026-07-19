@@ -31,7 +31,11 @@ namespace TEF.World
     public sealed class PlayerEntity : IWorldPlayer
     {
         private const ushort BodyMaleHuman = 0x0190;
-        private const int MillisecondsPerFrame = 150; // matches ClassicUO's WALKING_DELAY
+
+        // Per-frame animation delay: run cycles faster than walk (Tier 4.6).
+        // Idle/stand uses the walk delay (harmless - stand is ~static).
+        private const int WalkMillisecondsPerFrame = 120;
+        private const int RunMillisecondsPerFrame = 80;
 
         private const float ZOffsetDecayRate = 18f; // higher = faster ease-out
         private const float ZOffsetSnapThreshold = 0.05f; // pixels - avoids perpetual sub-pixel jitter
@@ -53,9 +57,16 @@ namespace TEF.World
         private float _visualZOffset;
 
         public ushort Graphic { get; set; } = BodyMaleHuman;
+
+        /// <summary>Body/skin hue applied to the whole sprite (0 = the art's own default grey body). Defaults to a skin tone; overrides the animation's default hue when non-zero. Future character customization sets this.</summary>
+        public ushort Hue { get; set; } = 0x83EA;
+
         public Vector2 WorldPosition { get; private set; }
         public Direction Facing { get; private set; } = Direction.South;
         public bool IsMoving { get; private set; }
+
+        /// <summary>True while moving at sprint/run speed - drives the run animation group + faster frame rate (Tier 4.6).</summary>
+        public bool IsRunning { get; private set; }
 
         /// <summary>
         /// Surface Z the player is standing on (UO z units), snapped per tile.
@@ -89,8 +100,9 @@ namespace TEF.World
             _visualZOffset = 0f;
         }
 
+        /// <summary>WASD movement. Returns true if a direction was held this frame (so the caller can fall back to mouse movement only when WASD is idle). Also advances the animation/Z-ease each frame regardless.</summary>
         /// <param name="moveSpeed">Tiles per second at normal (non-sprint) pace.</param>
-        public void Update(InputManager input, WorldMap map, float moveSpeed = 4f)
+        public bool Update(InputManager input, WorldMap map, float moveSpeed = 4f)
         {
             var move = Vector2.Zero;
 
@@ -99,41 +111,96 @@ namespace TEF.World
             if (input.IsActionDown(GameAction.StrafeLeft)) move.X -= 1;
             if (input.IsActionDown(GameAction.StrafeRight)) move.X += 1;
 
-            IsMoving = move != Vector2.Zero;
+            bool moved = move != Vector2.Zero;
 
-            if (IsMoving)
+            if (moved)
             {
-                move.Normalize();
-
-                // `move` is the desired ON-SCREEN direction (+X right, +Y
-                // down): W = up, D = right, etc. Facing is read straight off
-                // it so the character looks the way the player pushed.
-                Facing = DirectionHelper.FromVector(move);
-
-                // WorldPosition is in UO tile coords, which the tile renderer
-                // projects isometrically: iso(x, y) = ((x - y), (x + y)). So
-                // the same screen direction has to be converted into a tile
-                // delta with the inverse of that projection, or the map would
-                // scroll diagonally relative to the facing (screen "up" is a
-                // tile diagonal in iso space, not tile -Y). Inverse of
-                // iso(dx, dy) = (sx, sy) is (dx, dy) = ((sx + sy), (sy - sx)).
-                var tileDir = new Vector2(move.X + move.Y, move.Y - move.X);
-                if (tileDir != Vector2.Zero)
-                {
-                    tileDir.Normalize();
-                }
-
-                float speed = moveSpeed;
-                if (input.IsActionDown(GameAction.Sprint))
-                {
-                    speed *= 1.75f;
-                }
-
-                TryMove(map, tileDir * speed * Time.Delta);
+                MoveScreen(map, move, input.IsActionDown(GameAction.Sprint), moveSpeed);
+            }
+            else
+            {
+                IsMoving = false;
+                IsRunning = false;
             }
 
             AdvanceAnimationFrame();
             DecayVisualZOffset();
+            return moved;
+        }
+
+        /// <summary>
+        /// Moves toward an ON-SCREEN direction (screen space: +X right, +Y
+        /// down; e.g. (0,-1) = up = north) at walk or sprint speed, setting
+        /// Facing. Shared by WASD (Update) and mouse movement (Tier 4.6) so both
+        /// input methods run through one facing/collision path.
+        /// </summary>
+        public void MoveScreen(WorldMap map, Vector2 screenMove, bool sprint, float moveSpeed = 4f)
+        {
+            if (screenMove == Vector2.Zero)
+            {
+                IsMoving = false;
+                IsRunning = false;
+                return;
+            }
+
+            IsMoving = true;
+            IsRunning = sprint;
+
+            var move = screenMove;
+            move.Normalize();
+
+            // Facing is read straight off the on-screen direction so the
+            // character looks the way it's heading.
+            Facing = DirectionHelper.FromVector(move);
+
+            TryMove(map, ToTileDelta(move) * (sprint ? moveSpeed * 1.75f : moveSpeed) * Time.Delta);
+        }
+
+        /// <summary>The Direction the player would face heading toward an on-screen direction - used to compare against current Facing for the right-click tap (Tier 4.6).</summary>
+        public Direction FacingFor(Vector2 screenDir) => DirectionHelper.FromVector(screenDir);
+
+        /// <summary>Turns to face an on-screen direction without moving (right-click tap when not already facing that way).</summary>
+        public void FaceScreen(Vector2 screenDir)
+        {
+            if (screenDir != Vector2.Zero)
+            {
+                Facing = DirectionHelper.FromVector(screenDir);
+                IsMoving = false;
+                IsRunning = false;
+            }
+        }
+
+        /// <summary>Takes a single step toward an on-screen direction (right-click tap when already facing that way).</summary>
+        public void StepScreen(WorldMap map, Vector2 screenDir)
+        {
+            if (screenDir == Vector2.Zero)
+            {
+                return;
+            }
+
+            var move = screenDir;
+            move.Normalize();
+            Facing = DirectionHelper.FromVector(move);
+            IsMoving = true;
+            IsRunning = false; // a single tap-step is a walk
+            TryMove(map, ToTileDelta(move));
+        }
+
+        // WorldPosition is in UO tile coords, which the renderer projects
+        // isometrically: iso(x, y) = ((x - y), (x + y)). A screen direction has
+        // to be converted to a tile delta with the inverse of that projection,
+        // or the map would scroll diagonally relative to the facing (screen
+        // "up" is a tile diagonal in iso space, not tile -Y). Inverse of
+        // iso(dx, dy) = (sx, sy) is (dx, dy) = ((sx + sy), (sy - sx)).
+        private static Vector2 ToTileDelta(Vector2 screenMove)
+        {
+            var tileDir = new Vector2(screenMove.X + screenMove.Y, screenMove.Y - screenMove.X);
+            if (tileDir != Vector2.Zero)
+            {
+                tileDir.Normalize();
+            }
+
+            return tileDir;
         }
 
         private void DecayVisualZOffset()
@@ -213,7 +280,7 @@ namespace TEF.World
         {
             _frameTimeAccumulator += Time.Delta * 1000f;
 
-            if (_frameTimeAccumulator < MillisecondsPerFrame)
+            if (_frameTimeAccumulator < (IsRunning ? RunMillisecondsPerFrame : WalkMillisecondsPerFrame))
             {
                 return;
             }
@@ -229,13 +296,13 @@ namespace TEF.World
                 return;
             }
 
-            // Matches Chunk.AddGameObject's mobile priority (Z + 1) and the
-            // same DepthKey formula TileRenderer writes for land/statics -
-            // see Design/prd-chunk-mesh-render.md section 4.4. Tile-floored
-            // (no sub-tile offset nudge yet, per that section's decision).
-            int tileX = (int)MathF.Floor(WorldPosition.X);
-            int tileY = (int)MathF.Floor(WorldPosition.Y);
-            float depth = DepthKey.Compute(tileX, tileY, Z + 1);
+            // Mobile priority (Z + 1, matching Chunk.AddGameObject) fed through
+            // the moving-object depth (Tier 4.6): rounds the iso diagonal off
+            // the player's FRACTIONAL position so, once past a tile's centre,
+            // the player sorts in front of the land tile they're stepping onto
+            // instead of that tile's top corner clipping their feet. See
+            // DepthKey.ComputeMoving.
+            float depth = DepthKey.ComputeMoving(WorldPosition.X, WorldPosition.Y, Z + 1);
 
             batcher.Draw(
                 sprite.Texture,
@@ -289,13 +356,27 @@ namespace TEF.World
             out SpriteInfo sprite, out Vector2 localOrigin, out bool mirror,
             out ushort hue, out bool useUOP, out byte action, out byte dir)
         {
-            action = (byte)(IsMoving ? PeopleAnimationGroup.WalkUnarmed : PeopleAnimationGroup.Stand);
+            // Stand when idle, the run cycle when sprinting, else the walk
+            // cycle (Tier 4.6 - running previously reused the walk animation).
+            var group = !IsMoving ? PeopleAnimationGroup.Stand
+                : IsRunning ? PeopleAnimationGroup.RunUnarmed
+                : PeopleAnimationGroup.WalkUnarmed;
+            action = (byte)group;
             dir = (byte)Facing;
             mirror = false;
 
             assets.Animations.GetAnimDirection(ref dir, ref mirror);
 
             var frames = assets.Animations.GetAnimationFrames(Graphic, action, dir, out hue, out useUOP);
+
+            // The player's own hue (skin tone) overrides the animation file's
+            // default when set - matches how a mobile's Hue overrides its body
+            // art's default in ClassicUO.
+            if (Hue != 0)
+            {
+                hue = Hue;
+            }
+
             if (frames.IsEmpty)
             {
                 sprite = default;

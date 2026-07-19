@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
+using System;
+
 namespace UOA.World
 {
     /// <summary>
@@ -25,6 +27,26 @@ namespace UOA.World
         public static float Compute(int tileX, int tileY, int priorityZ)
         {
             return (tileX + tileY) + (127 + priorityZ) * 0.01f;
+        }
+
+        /// <summary>
+        /// Depth for a continuously-moving object whose position is fractional
+        /// (Tier 4.6 - the player, and any future smoothly-moving entity). Uses
+        /// the ROUNDED iso diagonal (round(worldX + worldY)) rather than the
+        /// floored tile, so once the object crosses a tile's centre it jumps to
+        /// the diagonal it's visually entering and stays in front of the land
+        /// tile ahead - instead of that tile's upper corner clipping its feet
+        /// while its depth is stuck on the tile behind. This is TEF's take on
+        /// ClassicUO View.CalculateDepthZ's sub-tile Offset quadrant nudge,
+        /// adapted to a fractional world position. priorityZ still separates it
+        /// from other objects on the same diagonal (land below, walls above).
+        /// </summary>
+        public static float ComputeMoving(float worldX, float worldY, int priorityZ)
+        {
+            // floor(v + 0.5) = round-half-up, avoiding MathF.Round's banker's
+            // rounding so the flip point is consistent at exactly x.5.
+            float diagonal = MathF.Floor(worldX + worldY + 0.5f);
+            return diagonal + (127 + priorityZ) * 0.01f;
         }
     }
 }

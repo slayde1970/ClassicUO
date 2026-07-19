@@ -79,6 +79,18 @@ namespace TEF.Scenes
         // it catches the second floor without mistaking a tall table for one.
         private const int UpperFloorClearance = 16;
 
+        // Right-click movement (Tier 4.6), ClassicUO-style. Distances are the
+        // cursor's pixel offset from screen centre (the player). Inside the
+        // dead zone nothing happens (no clear direction); between it and the run
+        // radius the player walks; beyond, it runs.
+        private const float MouseMoveDeadZone = 18f;
+        private const float MouseRunRadius = 120f;
+
+        // Set when a right-click starts over UI or an interactable entity, so
+        // the whole hold is suppressed (that click is reserved - a future
+        // interact/context action). Cleared when the button is released.
+        private bool _mouseMoveSuppressed;
+
         // Tier 4 #13 - tried CompareFunction.GreaterEqual here (reasoning
         // that DepthKey.Compute assigns LARGER values to things meant to
         // draw later/in front) to explain a ground-level-static (stone
@@ -400,7 +412,8 @@ namespace TEF.Scenes
             // is cheap on frames where nothing is actually due to advance.
             _animatedStatics.Update(Game.Assets);
 
-            _player.Update(input, _map);
+            bool wasdMoved = _player.Update(input, _map);
+            HandleMouseMovement(input, wasdMoved);
 
             if (input.ScrollDelta != 0)
             {
@@ -548,6 +561,64 @@ namespace TEF.Scenes
                 ? ""
                 : $"  |  hover: {headline.Kind} {headline.Name} 0x{headline.Graphic:X4} @ ({headline.TileX}, {headline.TileY})";
             Game.Window.Title = $"The Exile's Forge  -  map {MapIndex}  ({tileX}, {tileY}, {_player.Z}){hover}";
+        }
+
+        // Right-click movement (Tier 4.6), ClassicUO/UO-style, layered on the
+        // same movement path as WASD (see PlayerEntity.MoveScreen). Direction is
+        // the cursor's offset from screen centre (where the player is drawn);
+        // the directional hand cursor already visualizes it. WASD takes priority.
+        private void HandleMouseMovement(InputManager input, bool wasdMoved)
+        {
+            if (wasdMoved || !input.IsMouseDown(MouseButton.Right))
+            {
+                _mouseMoveSuppressed = false;
+                return;
+            }
+
+            var viewport = Game.GraphicsDevice.Viewport;
+            var center = new Vector2(viewport.Width / 2f, viewport.Height / 2f);
+            var screenDir = new Vector2(input.MousePosition.X, input.MousePosition.Y) - center;
+            float distance = screenDir.Length();
+
+            // Snap to the 8-direction grid so mouse movement matches WASD
+            // instead of floating toward the cursor at an arbitrary angle. The
+            // raw distance still drives the dead-zone / walk-vs-run choice.
+            var gridDir = DirectionHelper.SnapTo8(screenDir);
+
+            if (input.IsMousePressed(MouseButton.Right))
+            {
+                // Initial click. Reserve a click that starts over UI or an
+                // interactable entity (the latter for a future interact/context
+                // action - designed later); otherwise do the UO tap: step if
+                // already facing that way, else just turn to face the cursor.
+                _mouseMoveSuppressed = Ui.IsMouseOverUI || _entityPick.Kind == PickKind.Entity;
+
+                if (_mouseMoveSuppressed || distance < MouseMoveDeadZone)
+                {
+                    return;
+                }
+
+                if (_player.Facing == _player.FacingFor(gridDir))
+                {
+                    _player.StepScreen(_map, gridDir);
+                }
+                else
+                {
+                    _player.FaceScreen(gridDir);
+                }
+
+                return;
+            }
+
+            // Held (after the initial press): run/walk continuously toward the
+            // cursor - walk inside the run radius, run beyond it, nothing inside
+            // the dead zone.
+            if (_mouseMoveSuppressed || distance < MouseMoveDeadZone)
+            {
+                return;
+            }
+
+            _player.MoveScreen(_map, gridDir, sprint: distance >= MouseRunRadius);
         }
 
         // Resource respawn hangs off the fixed simulation tick (Tier 3 #6),

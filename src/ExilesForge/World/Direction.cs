@@ -59,5 +59,25 @@ namespace TEF.World
 
             return (Direction)index;
         }
+
+        /// <summary>
+        /// Snaps a screen-space direction (+X right, +Y down) to the nearest of
+        /// the 8 cardinal/ordinal unit vectors, so mouse steering moves on the
+        /// same 8-direction grid as WASD (which only ever produces those exact
+        /// vectors) rather than floating toward the cursor at an arbitrary
+        /// angle. Returns Zero for Zero.
+        /// </summary>
+        public static Vector2 SnapTo8(Vector2 v)
+        {
+            if (v == Vector2.Zero)
+            {
+                return Vector2.Zero;
+            }
+
+            // Round the heading to the nearest 45 degrees, then rebuild a unit
+            // vector from it (screen Y is +down, so negate the sine).
+            double snapped = Math.Round(Math.Atan2(-v.Y, v.X) / (Math.PI / 4.0)) * (Math.PI / 4.0);
+            return new Vector2((float)Math.Cos(snapped), -(float)Math.Sin(snapped));
+        }
     }
 }
