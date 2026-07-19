@@ -474,6 +474,12 @@ namespace TEF.Scenes
 
             Ui.Update(input);
 
+            // Cursor icon (Tier 4.5): the 8-way directional hand over the
+            // world (groundwork for click-to-move), a plain pointer over a UI
+            // panel. Later: Target while selecting, Wait during an action,
+            // WarMode toggle, etc.
+            Game.Cursor.Cursor = Ui.IsMouseOverUI ? CursorType.Pointer : CursorType.Directional;
+
             // Left-click harvests whatever entity the cursor is actually over
             // (resolved by the previous frame's Draw via mouse-picking) -
             // unless the click actually landed on a UI panel (e.g. the

@@ -8,6 +8,7 @@ using UOA.Assets;
 using UOA.Audio;
 using UOA.Input;
 using UOA.Scenes;
+using UOA.UI;
 
 namespace UOA.Core
 {
@@ -41,11 +42,10 @@ namespace UOA.Core
             Window.AllowUserResizing = true;
             Window.Title = "The Exile's Forge";
 
-            // Show the OS cursor. FNA hides it by default; ClassicUO draws its
-            // own in-game cursor instead, but TEF has no custom cursor yet, so
-            // without this the mouse is invisible (can't tell what you're
-            // hovering/picking). Revisit if/when a themed UO cursor is added.
-            IsMouseVisible = true;
+            // Hide the OS cursor - the engine draws the UO hand cursor itself
+            // (see Cursor / Draw), the same way ClassicUO does. Mouse POSITION
+            // is still tracked with this off (see InputManager).
+            IsMouseVisible = false;
 
             IsFixedTimeStep = false;
             TargetElapsedTime = System.TimeSpan.FromMilliseconds(1000.0 / 250.0);
@@ -59,6 +59,9 @@ namespace UOA.Core
         public SceneManager Scenes { get; } = new SceneManager();
         public SimulationClock Sim { get; } = new SimulationClock();
         public WorldClock World { get; } = new WorldClock();
+
+        /// <summary>The UO hand cursor, drawn on top of everything each frame. Scenes set its <see cref="GameCursor.Cursor"/>/<see cref="GameCursor.WarMode"/> per game state (reset to Pointer each frame - see Update).</summary>
+        public GameCursor Cursor { get; } = new GameCursor();
 
         protected override void Initialize()
         {
@@ -116,6 +119,13 @@ namespace UOA.Core
             Time.Delta = (float)gameTime.ElapsedGameTime.TotalSeconds;
 
             Input.Update();
+
+            // Default the cursor each frame so a scene only has to opt into a
+            // non-pointer icon (and it resets cleanly on scene changes); the
+            // active scene sets it during Scenes.Update.
+            Cursor.Cursor = CursorType.Pointer;
+            Cursor.WarMode = false;
+
             Scenes.Update(Input);
             Audio.Update();
 
@@ -139,6 +149,12 @@ namespace UOA.Core
             GraphicsDevice.Clear(ClearOptions.Target | ClearOptions.DepthBuffer, Color.Black, 1f, 0);
 
             Scenes.Draw(_batcher);
+
+            // Drawn last, so the cursor sits on top of the world and all UI.
+            // The directional hand faces away from screen centre, where the
+            // player is drawn.
+            var viewport = GraphicsDevice.Viewport;
+            Cursor.Draw(_batcher, Assets, Input.MousePosition, new Point(viewport.Width / 2, viewport.Height / 2));
 
             _frameCount++;
             _fpsElapsedMs += gameTime.ElapsedGameTime.TotalMilliseconds;

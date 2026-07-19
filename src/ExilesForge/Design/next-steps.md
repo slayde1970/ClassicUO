@@ -449,6 +449,16 @@ zero engine changes).
     `UpdateMaxDrawZ`) so you only hide the roof you're actually under; cutoff is
     a flat `player.Z + 10` (no flicker as roof heights vary). On at scene load,
     F12 toggles.
+20. **[DONE] UO hand cursor** (engine, `UOA.UI.GameCursor`). Draws the classic
+    UO cursor art (normal `0x206A..` / war-mode `0x2053..`), including the 8-way
+    hand that points away from screen centre (the centred player) via a port of
+    ClassicUO's `GetMouseDirection`, with green-marker hotspot detection + 1px
+    border inset. `CursorType` enum (Pointer/Directional/Target/Wait/Drag/Text)
+    + `WarMode`, set by the active scene each frame (`Game.Cursor.Cursor = ...`);
+    `GameController` owns it, hides the OS cursor, resets to Pointer per frame,
+    and draws it on top of everything. WorldScene uses Directional over the
+    world / Pointer over UI. **Next (deferred): cursor-based movement** — click/
+    hold in the world to walk in the pointed 8-direction, alongside WASD, UO-style.
 
 ## Tier 5 — reserved
 
