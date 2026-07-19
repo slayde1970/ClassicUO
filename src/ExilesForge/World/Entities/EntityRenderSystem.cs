@@ -56,6 +56,8 @@ namespace TEF.World.Entities
                     continue;
                 }
 
+                short priorityZ = (short)(transform.Z + (appearance.Height != 0 ? 1 : 0));
+
                 var tile = new WorldMap.StaticTile
                 {
                     Graphic = appearance.Graphic,
@@ -63,7 +65,10 @@ namespace TEF.World.Entities
                     Z = transform.Z,
                     // Same rule as WorldMap.ComputePriorityZ: a raised object
                     // sorts one step above a flat one at the same Z.
-                    PriorityZ = (short)(transform.Z + (appearance.Height != 0 ? 1 : 0)),
+                    PriorityZ = priorityZ,
+                    // Entity tiles aren't stacked through GetBlockStatics'
+                    // per-tile de-dup (Tier 4.6), so depth Z is just PriorityZ.
+                    DepthZ = priorityZ,
                     ReadOrder = id, // stable tiebreaker, mirrors GetBlockStatics' read-order tiebreak
                     EntityId = id,  // marks this entry as entity-sourced for mouse-picking
                     // Entities are never subject to WorldMap's "nodraw

@@ -31,6 +31,16 @@ namespace UOA.World
             public ushort Hue;
             public sbyte Z;
             public short PriorityZ;
+
+            // The Z fed to the GPU depth key (Tier 4.6): a de-duplicated
+            // PriorityZ, strictly increasing within a tile's sorted stack, so
+            // two statics at the same PriorityZ (e.g. a rug over a floor) get
+            // distinct, depth-buffer-resolvable depths instead of tying and
+            // letting the mesh's texture-bucket draw order pick the winner
+            // arbitrarily. Set in GetBlockStatics after the stack sort; for
+            // entity-projected tiles it's just PriorityZ (see EntityRenderSystem).
+            public short DepthZ;
+
             public int ReadOrder; // tiebreaker for a stable sort - see GetBlockStatics
 
             // 0 for a real map static; the owning entity id when this entry
@@ -191,12 +201,42 @@ namespace UOA.World
                             int cmp = a.PriorityZ.CompareTo(b.PriorityZ);
                             return cmp != 0 ? cmp : a.ReadOrder.CompareTo(b.ReadOrder);
                         });
+
+                        AssignDepthZ(list);
                     }
                 }
             }
 
             _staticCache[key] = cells;
             return cells;
+        }
+
+        // Tier 4.6: give each static in a tile's back-to-front sorted stack a
+        // strictly-increasing DepthZ, bumping only exact PriorityZ ties (or
+        // inversions) by the minimum whole unit needed. A whole PriorityZ unit
+        // is ~0.01 in the depth key - depth-buffer-resolvable at map scale,
+        // where a fractional bias would be lost to float/24-bit-depth
+        // precision. Genuine gaps are preserved (only entries <= the running
+        // max get bumped), so a rug over a floor now gets a distinct, higher
+        // depth than the floor instead of tying and letting the mesh's
+        // texture-bucket draw order pick the winner.
+        private static void AssignDepthZ(List<StaticTile> list)
+        {
+            if (list == null)
+            {
+                return;
+            }
+
+            int last = int.MinValue;
+
+            for (int i = 0; i < list.Count; i++)
+            {
+                var s = list[i];
+                int depth = s.PriorityZ > last ? s.PriorityZ : last + 1;
+                s.DepthZ = (short)depth;
+                list[i] = s;
+                last = depth;
+            }
         }
 
         /// <summary>Builds (once, lazily) or returns the cached BlockMesh for a block - Tier 4 #13.</summary>

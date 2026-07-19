@@ -453,7 +453,7 @@ namespace UOA.World
                         screenPos,
                         sprite.UV,
                         s.HueVector,
-                        DepthKey.Compute(tx, ty, s.PriorityZ)
+                        DepthKey.Compute(tx, ty, s.DepthZ)
                     );
                     StaticDrawCalls++;
                 }

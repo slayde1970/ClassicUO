@@ -479,20 +479,17 @@ side-by-side ClassicUO comparison screenshots for #21 and #23.
     Own-tile-only check preserves the item-19 elevated-building fix (a raised
     floor you stand beside keeps its floor). User-verified.
 
-22. **Rug-over-floor static depth ties.** Rug static tiles don't reliably render
-    above the building floor statics under them - sometimes the floor wins.
-    Root cause: a rug and the floor sit on the same tile at the same (or equal
-    `PriorityZ`) Z, so `DepthKey.Compute(tx, ty, PriorityZ)` gives them the
-    **same depth value**; with the GPU `LessEqual` test, equal depths mean
-    "last drawn wins", and `BlockMesh` draws statics in **texture-bucket order**
-    (not stacking order), so which of rug/floor lands on top is effectively
-    arbitrary. The old painter's-algorithm path broke ties with `ReadOrder`
-    (block-file stacking order), but that tiebreaker isn't folded into the depth
-    key. Fix: fold a tiny per-tile stacking bias (from `ReadOrder`, or the
-    static's index in its tile's sorted list) into the depth key - small enough
-    to stay within the tile's 0.01 `PriorityZ` band and never cross into a
-    neighbor's - so co-located same-Z statics get distinct, stable depths.
-    Applies to both the `BlockMesh` static quads and the per-object path.
+22. **[DONE] Rug-over-floor static depth ties.** Root cause confirmed: a rug and
+    the floor under it share a tile + `PriorityZ`, so `DepthKey` gave them equal
+    depths; GPU `LessEqual` then let `BlockMesh`'s texture-bucket draw order pick
+    the winner arbitrarily (hence "not always"). A sub-unit bias can't fix it -
+    at map-scale coords the float/24-bit-depth precision can't resolve steps
+    below ~0.004, and one `PriorityZ` unit is 0.01. Fix: bake a tie-broken
+    `StaticTile.DepthZ` once at load (`WorldMap.AssignDepthZ`) - walk each tile's
+    back-to-front sorted stack and make DepthZ strictly increasing, bumping only
+    exact ties by one whole unit (genuine gaps preserved). Both the mesh and
+    per-object paths key depth off `DepthZ`; entity tiles set `DepthZ =
+    PriorityZ`. Rug now reliably draws atop the floor. User-verified.
 
 23. **Player-feet vs land-tile Z-fighting at tile boundaries.** The player's
     feet get covered by the top-middle of the land tile in front until the

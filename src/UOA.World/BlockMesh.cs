@@ -257,7 +257,7 @@ namespace UOA.World
                 ref readonly var data = ref assets.Files.TileData.StaticData[s.Graphic];
                 bool hideable = data.IsRoof;
 
-                var vertex = BuildFlatQuad(sprite.Texture, position, sprite.UV, s.HueVector, DepthKey.Compute(tx, ty, s.PriorityZ));
+                var vertex = BuildFlatQuad(sprite.Texture, position, sprite.UV, s.HueVector, DepthKey.Compute(tx, ty, s.DepthZ));
                 quads.Add((vertex, sprite.Texture, s.Z, hideable));
             }
         }
