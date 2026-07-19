@@ -279,6 +279,55 @@ namespace UOA.World
         }
 
         /// <summary>
+        /// Multi-story detection (Tier 4.6): the Z of the lowest floor SURFACE
+        /// sitting a full storey above the player - i.e. the second floor whose
+        /// underside is the ceiling of the ground-floor room the player is in -
+        /// on the player's OWN tile, or null if there's no upper floor above
+        /// them. Mirrors the first pass of ClassicUO's UpdateMaxDrawZ (which
+        /// only lets a surface on the player's own tile set the cull level).
+        /// Feed the result to <see cref="TileRenderer.StaticZCutoff"/> with
+        /// <see cref="StaticCutoffMode.All"/> to hide the whole upper storey -
+        /// its floor, walls, AND roof - revealing the room below; ground-floor
+        /// statics (anchored below the floor's Z) stay. Only the player's own
+        /// tile is checked, so a raised building the player stands beside (its
+        /// floor on a neighbouring tile) is NOT treated as an upper storey and
+        /// keeps its floor - see IsUnderRoof for the single-storey roof gate.
+        /// </summary>
+        public int? FindUpperFloorZ(int x, int y, sbyte footZ, int clearance)
+        {
+            var statics = GetStaticsAt(x, y);
+            if (statics == null)
+            {
+                return null;
+            }
+
+            var staticData = _assets.Files.TileData.StaticData;
+            int threshold = footZ + clearance;
+            int? lowest = null;
+
+            foreach (var s in statics)
+            {
+                if (s.Z < threshold || s.Graphic >= staticData.Length)
+                {
+                    continue;
+                }
+
+                ref readonly var data = ref staticData[s.Graphic];
+                if (!data.IsSurface)
+                {
+                    continue;
+                }
+
+                if (lowest == null || s.Z < lowest.Value)
+                {
+                    lowest = s.Z;
+                }
+            }
+
+            return lowest;
+        }
+
+        /// <summary>
         /// Resolves the Z the player would stand at on tile (x, y) coming from
         /// height <paramref name="fromZ"/>, and whether the tile is walkable
         /// at all. A tile is walkable if it has a standable surface (passable

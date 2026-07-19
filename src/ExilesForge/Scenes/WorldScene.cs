@@ -72,6 +72,13 @@ namespace TEF.Scenes
         // it doesn't flicker as roof-tile heights vary across a building.
         private const int RoofHideHeight = 10;
 
+        // Multi-storey (Tier 4.6): a floor SURFACE at least this far above the
+        // player's feet counts as an upper storey (its underside is the room's
+        // ceiling), triggering the hide-whole-storey path. Above typical
+        // furniture-surface heights (~8-12) but below a full UO storey (~20) so
+        // it catches the second floor without mistaking a tall table for one.
+        private const int UpperFloorClearance = 16;
+
         // Tier 4 #13 - tried CompareFunction.GreaterEqual here (reasoning
         // that DepthKey.Compute assigns LARGER values to things meant to
         // draw later/in front) to explain a ground-level-static (stone
@@ -430,18 +437,34 @@ namespace TEF.Scenes
                 _roofHideEnabled = !_roofHideEnabled;
             }
 
-            // Roof-hiding (Tier 4.5): only when the player is actually under a
-            // covering (roof/upper floor) on their own tile - matching how
-            // ClassicUO gates roof-hiding so buildings you're merely standing
-            // NEXT to keep their roofs - hide statics a fixed height above the
-            // player. The cutoff is a flat player.Z + RoofHideHeight (not the
-            // overhead object's own Z) so it stays stable as the player walks
-            // under sloped/varied roof tiles instead of popping in and out.
+            // Roof / upper-storey hiding (Tier 4.5 + 4.6), ported from
+            // ClassicUO's UpdateMaxDrawZ. Two cases, both gated on the player
+            // being under a covering on their OWN tile so buildings they're
+            // merely standing next to keep their roofs:
+            //  - Multi-storey: if a floor SURFACE sits a storey above the player
+            //    (the ceiling of the room they're in), cut at that floor's Z and
+            //    hide EVERYTHING above it (floor, upper walls, roof) so the whole
+            //    upper storey lifts off. The floor is flat, so the cut is stable.
+            //  - Single-storey: otherwise, if just a roof is overhead, hide only
+            //    roofs at a flat player.Z + RoofHideHeight (stable, keeps the
+            //    walls/floor/decor, no flicker as sloped roof heights vary).
             int playerTileX = (int)MathF.Floor(_player.WorldPosition.X);
             int playerTileY = (int)MathF.Floor(_player.WorldPosition.Y);
-            _tiles.StaticZCutoff = _roofHideEnabled && _map.IsUnderRoof(playerTileX, playerTileY, _player.Z, RoofHideHeight)
-                ? _player.Z + RoofHideHeight
-                : null;
+
+            if (_roofHideEnabled && _map.FindUpperFloorZ(playerTileX, playerTileY, _player.Z, UpperFloorClearance) is int upperFloorZ)
+            {
+                _tiles.StaticZCutoff = upperFloorZ;
+                _tiles.StaticCutoffFilter = StaticCutoffMode.All;
+            }
+            else if (_roofHideEnabled && _map.IsUnderRoof(playerTileX, playerTileY, _player.Z, RoofHideHeight))
+            {
+                _tiles.StaticZCutoff = _player.Z + RoofHideHeight;
+                _tiles.StaticCutoffFilter = StaticCutoffMode.Roofs;
+            }
+            else
+            {
+                _tiles.StaticZCutoff = null;
+            }
 
             if (input.IsActionPressed(GameAction.ToggleDebugInfo))
             {

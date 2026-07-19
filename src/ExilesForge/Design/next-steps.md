@@ -460,6 +460,57 @@ zero engine changes).
     world / Pointer over UI. **Next (deferred): cursor-based movement** — click/
     hold in the world to walk in the pointed 8-direction, alongside WASD, UO-style.
 
+## Tier 4.6 — Rendering correctness fixes
+
+Post-refactor cleanup: three depth/occlusion issues found once the chunk-mesh
+renderer, roof-hiding, and cursor were all in. Each is a correctness bug in
+`UOA.World` (the reusable renderer), not TEF-specific. User will supply
+side-by-side ClassicUO comparison screenshots for #21 and #23.
+
+21. **[DONE] 2-story building roof-hide correctness.** Confirmed via
+    TEF-vs-ClassicUO comparison: at a 2-story ground floor CUO lifts the ENTIRE
+    upper storey (floor + upper walls + roof), TEF hid only the roof leaving the
+    upper floor/walls occluding. Fixed by porting the two-case structure of
+    ClassicUO's `UpdateMaxDrawZ`: `WorldMap.FindUpperFloorZ` checks the player's
+    OWN tile for a floor `IsSurface` a storey above them (>= `player.Z + 16`,
+    `UpperFloorClearance`); if found, WorldScene cuts at that floor's Z with
+    `StaticCutoffMode.All` (hides floor+walls+roof, keeps the ground floor);
+    else falls back to the single-storey roof cut (`player.Z + 10`, Roofs mode).
+    Own-tile-only check preserves the item-19 elevated-building fix (a raised
+    floor you stand beside keeps its floor). User-verified.
+
+22. **Rug-over-floor static depth ties.** Rug static tiles don't reliably render
+    above the building floor statics under them - sometimes the floor wins.
+    Root cause: a rug and the floor sit on the same tile at the same (or equal
+    `PriorityZ`) Z, so `DepthKey.Compute(tx, ty, PriorityZ)` gives them the
+    **same depth value**; with the GPU `LessEqual` test, equal depths mean
+    "last drawn wins", and `BlockMesh` draws statics in **texture-bucket order**
+    (not stacking order), so which of rug/floor lands on top is effectively
+    arbitrary. The old painter's-algorithm path broke ties with `ReadOrder`
+    (block-file stacking order), but that tiebreaker isn't folded into the depth
+    key. Fix: fold a tiny per-tile stacking bias (from `ReadOrder`, or the
+    static's index in its tile's sorted list) into the depth key - small enough
+    to stay within the tile's 0.01 `PriorityZ` band and never cross into a
+    neighbor's - so co-located same-Z statics get distinct, stable depths.
+    Applies to both the `BlockMesh` static quads and the per-object path.
+
+23. **Player-feet vs land-tile Z-fighting at tile boundaries.** The player's
+    feet get covered by the top-middle of the land tile in front until the
+    player walks past that tile's centre. Root cause is exactly the sub-tile
+    nudge `DepthKey` deliberately skipped (see its doc comment): the player's
+    depth is computed from `floor(WorldPosition)` - quantized to the tile - so
+    while the player moves across a tile toward its front edge, their depth
+    stays at the back tile's value even though they're visually standing in the
+    front tile's diamond, letting the front land tile's upper corner occlude
+    their feet. ClassicUO's `View.CalculateDepthZ` nudges `x`/`y`/`z` by the
+    object's sub-tile screen `Offset` (the +1-to-whichever-coordinate-it-leans
+    quadrant logic) precisely for continuously-moving objects like the player.
+    Fix: give the player (and any future moving entity) a depth derived from its
+    **fractional** world position / movement offset rather than the floored
+    tile - port the offset-quadrant nudge, or bias the player's `priorityZ`/tile
+    coords by its sub-tile progress so the depth transitions smoothly as it
+    crosses a tile boundary.
+
 ## Tier 5 — reserved
 
 Not yet scoped - the numbering gap before Tier 6 is intentional, not a
