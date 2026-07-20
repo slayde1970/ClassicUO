@@ -304,9 +304,18 @@ namespace TEF.World
             // DepthKey.ComputeMoving.
             float depth = DepthKey.ComputeMoving(WorldPosition.X, WorldPosition.Y, Z + 1);
 
+            var position = localOrigin + screenCenterOffset;
+
+            // Flattened, skewed shadow on the ground beneath the player (Tier
+            // 4.7), rendered by the shared shader's SHADOW mode. Drawn first, at
+            // the same depth as the player, so the player sprite draws on top of
+            // it while it still overlays the land and is occluded by statics in
+            // front (same as ClassicUO's MobileView shadow pass).
+            batcher.DrawShadow(sprite.Texture, position, sprite.UV, mirror, depth);
+
             batcher.Draw(
                 sprite.Texture,
-                localOrigin + screenCenterOffset,
+                position,
                 sprite.UV,
                 ShaderHueTranslator.GetHueVector(hue),
                 0f,

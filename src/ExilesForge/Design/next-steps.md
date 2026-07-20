@@ -570,10 +570,13 @@ TEF-specific - each strengthens the engine for every future prototype.
     Delivers the scriptable/moddable UI + gameplay vision. Hold until #26 exists
     (little to script against yet).
 
-28. **Character / entity shadows.** UO draws a flattened shadow blob under
-    mobiles; TEF has none. A small addition to the player/entity draw path in
-    `UOA.World` (a hued, squashed sprite pass beneath the feet). Low effort,
-    high UO-fidelity payoff, benefits every prototype - slot in any time.
+28. **[DONE] Player shadow.** `PlayerEntity.Draw` now casts a shadow via the
+    shared renderer's `batcher.DrawShadow` (the shader's SHADOW mode 8, same as
+    ClassicUO's MobileView) - a flattened, skewed, translucent copy of the
+    current sprite frame, drawn first at the player's depth so the sprite draws
+    on top while the shadow overlays the ground and is occluded by statics in
+    front. User-verified. **Deferred to a later graphics-polish phase:** shadows
+    for trees / rocks / other entities (same `DrawShadow` on their draw path).
 
 29. **Robustness: save slots + versioning, logging + crash handling.**
       - `SaveManager` is single-slot; generalise to named/multiple slots (small
