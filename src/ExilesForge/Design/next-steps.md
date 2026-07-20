@@ -520,6 +520,69 @@ player-animation tweak. All items (#21-#24) done and user-verified.
     (was always WalkUnarmed) and a faster frame delay (walk 150→120ms, run
     80ms). User-verified.
 
+## Tier 4.7 — Engine enhancements
+
+Reusable-framework improvements (all in `UOA.Engine` / `UOA.World`), suggested
+after the Tier 4.5 extraction + 4.6 polish. Ordered by leverage. Folds in the
+long-deferred `BlockMesh` eviction cleanup (now part of #25). None are
+TEF-specific - each strengthens the engine for every future prototype.
+
+25. **[DONE] BlockMesh dirty-rebuild + eviction (dynamic-world foundation).**
+    Turned the read-only map mutable. Delivered (all `UOA.World`):
+      - **Persistent mutation overlay** (`_tileOverrides`: per-tile added +
+        suppressed statics), applied over the disk data in `ApplyOverrides`
+        whenever a block's static list rebuilds - lives OUTSIDE the caches so
+        edits survive block eviction + re-read.
+      - `MarkTileDirty`/`MarkBlockDirty` drop the cached static list AND mesh so
+        both rebuild with the overlay applied.
+      - Mutation API: `AddStatic` (place), `SuppressStatic`/`UnsuppressStatic`
+        (remove/restore a disk static - the chop-tree / clear-wall / respawn
+        primitive; also the building-clearance mechanism).
+      - `EvictFarBlocks` now evicts `_blockMeshes` too (the deferred Tier 4 #13
+        cleanup - BlockMesh owns no GPU buffer, so dropping the ref frees it).
+      - `PickResult.Z` added so game code can target a picked static; debug key
+        **Delete** suppresses the map static under the cursor.
+    User-verified (live edit, mesh rebuild, eviction-persistence). **Follow-up
+    (not done):** persist the overlay across save/load via a game-side
+    `SaveManager` participant - wire when building/harvest gameplay needs it.
+
+26. **UI depth: text input, keyboard focus, more controls, gump-art theming.**
+    `UOA.UI` has only `Panel`/`Button`/`Label` on solid colours and no keyboard
+    focus. Before real game UI (inventory, crafting, chat, name entry) or the
+    scripting seam pays off:
+      - **Keyboard-focus stack** on `UIManager` (deliberately skipped in 4.5 -
+        nothing consumed keys) + a `TextBox` control; needs text-input events
+        wired into `InputManager` (currently polling-only).
+      - More controls: `Checkbox`, and a scrollable container / list.
+      - Optional high-fidelity: 9-slice **gump-art backgrounds** (UO's real
+        windowed look) via the already-loaded `Gumps.GetGump`, as an
+        alternative backing to the flat `Panel`.
+
+27. **Lua scripting interpreter behind `IScriptHost` + UI markup loader.** The
+    seam (`ControlFactory` + `ControlProperties` + `IScriptHost`/
+    `DelegateScriptHost`) is in; add a real interpreter - **MoonSharp** (pure
+    C#, sandboxable) recommended - implementing `IScriptHost`, plus a markup
+    loader that builds control trees from a data file via `ControlFactory`.
+    Delivers the scriptable/moddable UI + gameplay vision. Hold until #26 exists
+    (little to script against yet).
+
+28. **Character / entity shadows.** UO draws a flattened shadow blob under
+    mobiles; TEF has none. A small addition to the player/entity draw path in
+    `UOA.World` (a hued, squashed sprite pass beneath the feet). Low effort,
+    high UO-fidelity payoff, benefits every prototype - slot in any time.
+
+29. **Robustness: save slots + versioning, logging + crash handling.**
+      - `SaveManager` is single-slot; generalise to named/multiple slots (small
+        change). The participant model already tolerates missing sections, so
+        explicit save-version migration slots in cleanly.
+      - No structured logging or crash handler yet - wire
+        `ClassicUO.Utility.Log` + a top-level exception guard (write a crash log
+        rather than dying silently) before this is more than a dev toy.
+
+Suggested order: **#25 first** (gates the dynamic-world gameplay), then **#26**
+when building real game UI (**#28** a quick fidelity win any time); **#27** and
+**#29** when the moment's right.
+
 ## Tier 5 — reserved
 
 Not yet scoped - the numbering gap before Tier 6 is intentional, not a

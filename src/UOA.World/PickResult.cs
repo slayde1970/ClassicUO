@@ -27,6 +27,9 @@ namespace UOA.World
         public int TileY;
         public ushort Graphic;
 
+        /// <summary>Z of the picked static (valid for <see cref="PickKind.Static"/>); lets game code target it for a map mutation, e.g. WorldMap.SuppressStatic (Tier 4.7).</summary>
+        public sbyte Z;
+
         /// <summary>The tiledata name for the graphic (LandTiles.Name / StaticTiles.Name), or null.</summary>
         public string Name;
 

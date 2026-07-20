@@ -533,6 +533,7 @@ namespace UOA.World
                 TileX = tx,
                 TileY = ty,
                 Graphic = s.Graphic,
+                Z = s.Z,
                 Name = assets.Files.TileData.StaticData[s.Graphic].Name,
                 EntityId = s.EntityId,
             };

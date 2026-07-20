@@ -450,6 +450,18 @@ namespace TEF.Scenes
                 _roofHideEnabled = !_roofHideEnabled;
             }
 
+            // Debug (Tier 4.7): remove the map static under the cursor - exercises
+            // the WorldMap mutation API + BlockMesh dirty-rebuild (the primitive
+            // tree-chop / wall-clear / building-clearance will use). Suppression
+            // lives in the persistent overlay, so it survives walking away and
+            // back (block eviction + re-read).
+            if (input.IsActionPressed(GameAction.DebugRemoveStatic)
+                && !Ui.IsMouseOverUI
+                && _tilePick.Kind == PickKind.Static)
+            {
+                _map.SuppressStatic(_tilePick.TileX, _tilePick.TileY, _tilePick.Graphic, _tilePick.Z);
+            }
+
             // Roof / upper-storey hiding (Tier 4.5 + 4.6), ported from
             // ClassicUO's UpdateMaxDrawZ. Two cases, both gated on the player
             // being under a covering on their OWN tile so buildings they're

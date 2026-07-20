@@ -75,6 +75,27 @@ namespace UOA.World
         // caches above.
         private readonly Dictionary<long, BlockMesh> _blockMeshes = new();
 
+        // Tier 4.7: per-tile mutation overlay applied on top of the read-only
+        // disk map data whenever a block's static list is (re)built - statics
+        // ADDED by the game (built walls, planted gardens) and disk statics
+        // SUPPRESSED (chopped trees, mined veins, cleared walls). Lives OUTSIDE
+        // the block/static/mesh caches, so edits survive cache eviction +
+        // re-read; a mutation marks the owning block dirty so its cached static
+        // list and BlockMesh rebuild with the overlay applied. (Persisting these
+        // across save/load is a game-level SaveManager participant - not wired
+        // here yet.)
+        private readonly Dictionary<(int X, int Y), TileOverride> _tileOverrides = new();
+
+        // Added statics get a read-order well past any disk block's, so they
+        // tie-break ABOVE disk statics at the same PriorityZ (placed on top).
+        private int _nextOverrideReadOrder = 1_000_000;
+
+        private sealed class TileOverride
+        {
+            public List<StaticTile> Added;
+            public HashSet<(ushort Graphic, sbyte Z)> Suppressed;
+        }
+
         // Cheap early-out for EvictFarBlocks: it only actually walks the
         // caches when the player's own block changes, so it's effectively
         // free on the vast majority of frames.
@@ -188,28 +209,139 @@ namespace UOA.World
                     });
                 }
 
-                if (cells != null)
-                {
-                    foreach (var list in cells)
-                    {
-                        // Stable sort: ties keep file read order, matching
-                        // Chunk.AddGameObject appending same-priority statics in
-                        // insertion order. List<T>.Sort is NOT stable, so break
-                        // ties on ReadOrder explicitly.
-                        list?.Sort(static (a, b) =>
-                        {
-                            int cmp = a.PriorityZ.CompareTo(b.PriorityZ);
-                            return cmp != 0 ? cmp : a.ReadOrder.CompareTo(b.ReadOrder);
-                        });
+            }
 
-                        AssignDepthZ(list);
-                    }
+            // Tier 4.7: overlay the game's per-tile edits on top of the disk
+            // data (creates cells if an empty-disk block now has added statics),
+            // then sort each tile's stack + assign depth.
+            cells = ApplyOverrides(blockX, blockY, cells);
+
+            if (cells != null)
+            {
+                foreach (var list in cells)
+                {
+                    // Stable sort: ties keep read order, matching
+                    // Chunk.AddGameObject appending same-priority statics in
+                    // insertion order. List<T>.Sort is NOT stable, so break
+                    // ties on ReadOrder explicitly (added statics carry a high
+                    // ReadOrder so they land above disk statics at the same Z).
+                    list?.Sort(static (a, b) =>
+                    {
+                        int cmp = a.PriorityZ.CompareTo(b.PriorityZ);
+                        return cmp != 0 ? cmp : a.ReadOrder.CompareTo(b.ReadOrder);
+                    });
+
+                    AssignDepthZ(list);
                 }
             }
 
             _staticCache[key] = cells;
             return cells;
         }
+
+        // Applies the per-tile mutation overlay to a block's freshly-read disk
+        // static grid (Tier 4.7): drops suppressed disk statics and appends
+        // added ones. Returns the (possibly newly-allocated) cell grid.
+        private List<StaticTile>[] ApplyOverrides(int blockX, int blockY, List<StaticTile>[] cells)
+        {
+            int baseX = blockX << 3;
+            int baseY = blockY << 3;
+
+            for (int ly = 0; ly < BlockSize; ly++)
+            {
+                for (int lx = 0; lx < BlockSize; lx++)
+                {
+                    if (!_tileOverrides.TryGetValue((baseX + lx, baseY + ly), out var over))
+                    {
+                        continue;
+                    }
+
+                    int pos = (ly << 3) + lx;
+                    cells ??= new List<StaticTile>[BlockSize * BlockSize];
+
+                    if (over.Suppressed != null && cells[pos] != null)
+                    {
+                        cells[pos].RemoveAll(s => over.Suppressed.Contains((s.Graphic, s.Z)));
+                    }
+
+                    if (over.Added != null && over.Added.Count > 0)
+                    {
+                        (cells[pos] ??= new List<StaticTile>()).AddRange(over.Added);
+                    }
+                }
+            }
+
+            return cells;
+        }
+
+        // --- Dynamic-world mutation API (Tier 4.7) -------------------------
+        // Edits are stored in the persistent overlay and applied whenever the
+        // affected block's static list is (re)built; each edit marks that block
+        // dirty so its cached statics + mesh rebuild. Coordinates are absolute
+        // tile coords.
+
+        /// <summary>Places a new static on a tile (a built wall, planted plant, dropped item, ...) and rebuilds its block. Survives cache eviction.</summary>
+        public void AddStatic(int tileX, int tileY, ushort graphic, ushort hue, sbyte z)
+        {
+            var over = GetOrCreateOverride(tileX, tileY);
+            (over.Added ??= new List<StaticTile>()).Add(BuildStaticTile(graphic, hue, z));
+            MarkTileDirty(tileX, tileY);
+        }
+
+        /// <summary>Hides a disk (map-data) static on a tile - a chopped tree, mined vein, or cleared wall - matched by graphic + Z. Reverse with <see cref="UnsuppressStatic"/>.</summary>
+        public void SuppressStatic(int tileX, int tileY, ushort graphic, sbyte z)
+        {
+            var over = GetOrCreateOverride(tileX, tileY);
+            (over.Suppressed ??= new HashSet<(ushort, sbyte)>()).Add((graphic, z));
+            MarkTileDirty(tileX, tileY);
+        }
+
+        /// <summary>Un-hides a previously suppressed disk static (e.g. a harvested map resource respawning).</summary>
+        public void UnsuppressStatic(int tileX, int tileY, ushort graphic, sbyte z)
+        {
+            if (_tileOverrides.TryGetValue((tileX, tileY), out var over)
+                && over.Suppressed != null
+                && over.Suppressed.Remove((graphic, z)))
+            {
+                MarkTileDirty(tileX, tileY);
+            }
+        }
+
+        /// <summary>Drops a tile's cached static list AND its block mesh so both rebuild (with the overlay applied) on next access. Land is unaffected.</summary>
+        public void MarkTileDirty(int tileX, int tileY) => MarkBlockDirty(tileX >> 3, tileY >> 3);
+
+        /// <summary>Drops a block's cached static list and mesh so they rebuild on next access.</summary>
+        public void MarkBlockDirty(int blockX, int blockY)
+        {
+            long key = ((long)blockX << 32) | (uint)blockY;
+            _staticCache.Remove(key);
+            _blockMeshes.Remove(key);
+        }
+
+        private TileOverride GetOrCreateOverride(int tileX, int tileY)
+        {
+            if (!_tileOverrides.TryGetValue((tileX, tileY), out var over))
+            {
+                over = new TileOverride();
+                _tileOverrides[(tileX, tileY)] = over;
+            }
+
+            return over;
+        }
+
+        // Builds a StaticTile for an added static with the same baked-in fields
+        // (PriorityZ/Drawable/HueVector) GetBlockStatics computes for disk
+        // statics. DepthZ is assigned later, during the per-tile stack sort.
+        private StaticTile BuildStaticTile(ushort graphic, ushort hue, sbyte z) => new StaticTile
+        {
+            Graphic = graphic,
+            Hue = hue,
+            Z = z,
+            PriorityZ = ComputePriorityZ(_assets, graphic, z),
+            ReadOrder = _nextOverrideReadOrder++,
+            Drawable = CanDrawStatic(_assets, graphic),
+            HueVector = ComputeHueVector(_assets, graphic, hue),
+        };
 
         // Tier 4.6: give each static in a tile's back-to-front sorted stack a
         // strictly-increasing DepthZ, bumping only exact PriorityZ ties (or
@@ -521,6 +653,12 @@ namespace UOA.World
 
             EvictFar(_blockCache, centerBlockX, centerBlockY, keepRadiusBlocks);
             EvictFar(_staticCache, centerBlockX, centerBlockY, keepRadiusBlocks);
+            // Tier 4.7: free far blocks' meshes too (the deferred Tier 4 #13
+            // cleanup). BlockMesh holds only CPU arrays + borrowed atlas texture
+            // refs (no owned GPU buffer), so dropping the reference is enough.
+            // Any mutation overlay (see _tileOverrides) lives outside the caches,
+            // so an evicted-then-revisited block rebuilds WITH its edits intact.
+            EvictFar(_blockMeshes, centerBlockX, centerBlockY, keepRadiusBlocks);
         }
 
         private void EvictFar<T>(Dictionary<long, T> cache, int centerBlockX, int centerBlockY, int keepRadiusBlocks)

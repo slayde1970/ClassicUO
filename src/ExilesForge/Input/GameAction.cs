@@ -31,5 +31,6 @@ namespace TEF.Input
         DebugAdvanceTime, // debug: jump the world clock forward 1 in-game hour, to check day/night without waiting
         DebugToggleDepthTest, // debug: A/B toggle for the Tier 4 #13 GPU depth-buffer work
         ToggleRoofHide, // toggle auto-hiding of roofs/upper floors when the player walks under them (Tier 4.5)
+        DebugRemoveStatic, // debug: suppress the map static under the cursor - exercises WorldMap's dynamic mutation + BlockMesh dirty-rebuild (Tier 4.7)
     }
 }

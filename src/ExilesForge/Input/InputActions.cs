@@ -44,6 +44,7 @@ namespace TEF.Input
             input.Rebind(GameAction.DebugAdvanceTime, Keys.F10);
             input.Rebind(GameAction.DebugToggleDepthTest, Keys.F11);
             input.Rebind(GameAction.ToggleRoofHide, Keys.F12);
+            input.Rebind(GameAction.DebugRemoveStatic, Keys.Delete);
         }
 
         public static void Rebind(this InputManager input, GameAction action, KeyBinding binding) =>
