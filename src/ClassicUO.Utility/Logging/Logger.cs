@@ -35,6 +35,7 @@ namespace ClassicUO.Utility.Logging
         private int _indent;
 
         private bool _isLogging;
+        private LogFile _logFile;
         private readonly object _syncObject = new object();
 
         // No volatile support for properties, let's use a private backing field.
@@ -42,12 +43,17 @@ namespace ClassicUO.Utility.Logging
 
         public void Start(LogFile logFile = null)
         {
+            // Optional persistent sink. Callers that pass null (e.g. the main
+            // ClassicUO client) stay console-only, as before.
+            _logFile = logFile;
             _isLogging = true;
         }
 
         public void Stop()
         {
             _isLogging = false;
+            _logFile?.Dispose();
+            _logFile = null;
         }
 
         public void Message(LogTypes logType, string text)
@@ -95,32 +101,29 @@ namespace ClassicUO.Utility.Logging
 
             if ((LogTypes & type) == type)
             {
+                string indent = _indent > 0 ? new string('\t', _indent * 2) : string.Empty;
+
                 if (type == LogTypes.None)
                 {
-                    if (_indent > 0)
-                    {
-                        Console.Write(new string('\t', _indent * 2));
-                    }
-
+                    Console.Write(indent);
                     Console.WriteLine(text);
+
+                    _logFile?.Write($"{indent}{text}");
                 }
                 else
                 {
-                    Console.Write(DateTime.UtcNow);
-                    Console.Write(" | ");
                     ConsoleColor temp = Console.ForegroundColor;
 
+                    Console.Write(DateTime.UtcNow);
+                    Console.Write(" | ");
                     Console.ForegroundColor = _logTypesInfo[type].Item1;
                     Console.Write(_logTypesInfo[type].Item2);
                     Console.ForegroundColor = temp;
                     Console.Write(" | ");
-
-                    if (_indent > 0)
-                    {
-                        Console.Write(new string('\t', _indent * 2));
-                    }
-
+                    Console.Write(indent);
                     Console.WriteLine(text);
+
+                    _logFile?.Write($"{DateTime.UtcNow} | {_logTypesInfo[type].Item2} | {indent}{text}");
                 }
             }
         }

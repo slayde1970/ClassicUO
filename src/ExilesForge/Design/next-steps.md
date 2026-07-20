@@ -578,17 +578,37 @@ TEF-specific - each strengthens the engine for every future prototype.
     front. User-verified. **Deferred to a later graphics-polish phase:** shadows
     for trees / rocks / other entities (same `DrawShadow` on their draw path).
 
-29. **Robustness: save slots + versioning, logging + crash handling.**
-      - `SaveManager` is single-slot; generalise to named/multiple slots (small
-        change). The participant model already tolerates missing sections, so
-        explicit save-version migration slots in cleanly.
-      - No structured logging or crash handler yet - wire
-        `ClassicUO.Utility.Log` + a top-level exception guard (write a crash log
-        rather than dying silently) before this is more than a dev toy.
+29. **Robustness: save slots + versioning, logging + crash handling. — DONE.**
+      - `SaveManager` now serves multiple **named slots** from one manager (the
+        same registered participants read/write whichever slot is passed);
+        `Save/Load/Exists/Delete/ListSlots(slot)`, default slot keeps the
+        historical `save.json` name so all existing calls are unchanged. Slot
+        labels are sanitised so they can't escape the app folder.
+      - Every document now carries a format version in a reserved `_meta`
+        section (`SaveFormatVersion`); `SaveManager.LoadedVersion` exposes it
+        after a load as the **migration hook** for a future schema break. The
+        participant model's section-tolerance already covers adding/removing
+        systems; `LoadedVersion` covers value/shape migration within a section.
+      - `UOA.Core.EngineDiagnostics` (engine-level, one call per app):
+        `Initialize(appId)` starts persistent file logging under
+        `%AppData%/<appId>/logs/` and hooks `AppDomain.UnhandledException`;
+        `Guard(run)` wraps the whole app so any fatal exception writes a
+        standalone `crash-<timestamp>.log` + `Log.Panic` and rethrows (non-zero
+        exit still reflects failure). `Program.Main` is now
+        `Initialize(...); Guard(() => RunGame(args))`.
+      - Fixed a latent shared-lib bug in the process: `ClassicUO.Utility.Logger`
+        ignored the `LogFile` it was handed (console-only). Wired the file sink
+        through — **opt-in / backward-compatible** (the main client passes no
+        `LogFile`, stays console-only). All `Log.*` output now persists to
+        `app.log` for callers that supply a file.
+      - User-verified: `app.log` populated with the session marker + full engine
+        log; `_meta.Version: 1` leads the save document; default-slot round-trip
+        intact; clean run, no exceptions.
 
 Suggested order: **#25 first** (gates the dynamic-world gameplay), then **#26**
-when building real game UI (**#28** a quick fidelity win any time); **#27** and
-**#29** when the moment's right.
+when building real game UI (**#28** a quick fidelity win any time); **#27** when
+the moment's right. (#25, #26 core, #28, #29 — done; #27 Lua is the last Tier 4.7
+item, plus the deferred #26 ScrollPanel/gump-art and #28 tree/rock shadows.)
 
 ## Tier 5 — reserved
 

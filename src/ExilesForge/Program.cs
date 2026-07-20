@@ -21,6 +21,15 @@ namespace TEF
         [STAThread]
         private static void Main(string[] args)
         {
+            // Tier 4.7 #29: file logging + crash handling wrap the whole run,
+            // so any fatal exception lands in %AppData%/<AppId>/logs rather than
+            // vanishing with the window.
+            EngineDiagnostics.Initialize(TefApp.AppId);
+            EngineDiagnostics.Guard(() => RunGame(args));
+        }
+
+        private static void RunGame(string[] args)
+        {
             var configManager = new ConfigManager<TefConfig>(TefApp.AppId);
             var config = configManager.Load();
 
