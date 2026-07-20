@@ -546,17 +546,21 @@ TEF-specific - each strengthens the engine for every future prototype.
     (not done):** persist the overlay across save/load via a game-side
     `SaveManager` participant - wire when building/harvest gameplay needs it.
 
-26. **UI depth: text input, keyboard focus, more controls, gump-art theming.**
-    `UOA.UI` has only `Panel`/`Button`/`Label` on solid colours and no keyboard
-    focus. Before real game UI (inventory, crafting, chat, name entry) or the
-    scripting seam pays off:
-      - **Keyboard-focus stack** on `UIManager` (deliberately skipped in 4.5 -
-        nothing consumed keys) + a `TextBox` control; needs text-input events
-        wired into `InputManager` (currently polling-only).
-      - More controls: `Checkbox`, and a scrollable container / list.
-      - Optional high-fidelity: 9-slice **gump-art backgrounds** (UO's real
-        windowed look) via the already-loaded `Gumps.GetGump`, as an
-        alternative backing to the flat `Panel`.
+26. **[CORE DONE] UI depth: text input, keyboard focus, TextBox, Checkbox.**
+    Delivered + user-verified: `InputManager` now buffers typed chars via FNA
+    `TextInputEXT` (`TypedChars`) + raw `IsKeyDown/IsKeyPressed(Keys)`
+    (`GameController` calls `StartTextInput`); `UIManager` gained keyboard focus
+    (`SetFocus`/`Focused`, focus-follows-left-click, routes typed chars + editing
+    keys to the focused control, clears focus when its gump closes); `Control`
+    gained `Focusable`/`IsFocused` + `OnFocus`/`OnBlur`/`OnTextInput`/`OnKeyDown`;
+    new `TextBox` (caret, backspace/delete/arrows/home/end, Enter→Submitted) and
+    `Checkbox` controls, both registered in `ControlFactory`. WorldScene
+    suppresses movement while a text field is focused; demoed with a Name field +
+    Show-FPS checkbox on the Resources panel.
+    **Deferred (build alongside the first real list/window that needs them, so
+    the API fits the use):** a wheel-scrollable, clipped `ScrollPanel` (needs
+    control parent pointers + the batcher's `ClipBegin/ClipEnd` scissor) and
+    9-slice **gump-art backgrounds** via the already-loaded `Gumps.GetGump`.
 
 27. **Lua scripting interpreter behind `IScriptHost` + UI markup loader.** The
     seam (`ControlFactory` + `ControlProperties` + `IScriptHost`/

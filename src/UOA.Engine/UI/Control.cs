@@ -3,6 +3,7 @@
 using System.Collections.Generic;
 using ClassicUO.Renderer;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Input;
 using UOA.Input;
 
 namespace UOA.UI
@@ -43,6 +44,14 @@ namespace UOA.UI
         // them doesn't steal hover/click from an interactive parent (e.g. a
         // Button with a text label drawn on top of it) - see UIManager.HitTest.
         public bool HitTestVisible = true;
+
+        // Keyboard focus (Tier 4.7). Focusable controls (e.g. TextBox) receive
+        // typed characters + editing keys while focused. UIManager focuses a
+        // focusable control when it's left-clicked and clears focus otherwise.
+        public bool Focusable;
+
+        /// <summary>Whether this control currently holds keyboard focus (set by UIManager).</summary>
+        public bool IsFocused { get; internal set; }
 
         public int ScreenX { get; private set; }
         public int ScreenY { get; private set; }
@@ -96,6 +105,26 @@ namespace UOA.UI
         }
 
         public virtual void OnClick(MouseButton button)
+        {
+        }
+
+        /// <summary>Called when this control gains keyboard focus (Tier 4.7).</summary>
+        public virtual void OnFocus()
+        {
+        }
+
+        /// <summary>Called when this control loses keyboard focus.</summary>
+        public virtual void OnBlur()
+        {
+        }
+
+        /// <summary>A printable character was typed while this control is focused.</summary>
+        public virtual void OnTextInput(char c)
+        {
+        }
+
+        /// <summary>An editing key (backspace/enter/arrows/...) was pressed while this control is focused.</summary>
+        public virtual void OnKeyDown(Keys key)
         {
         }
 

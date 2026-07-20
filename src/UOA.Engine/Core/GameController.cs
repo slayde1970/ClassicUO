@@ -4,6 +4,7 @@ using System;
 using ClassicUO.Renderer;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 using UOA.Assets;
 using UOA.Audio;
 using UOA.Input;
@@ -86,6 +87,11 @@ namespace UOA.Core
 
             Assets.Load(GraphicsDevice, Settings);
             Audio.Initialize(Assets);
+
+            // Enable SDL/FNA text-input events so focused UI text controls get
+            // typed characters (Tier 4.7). InputManager buffers them; UIManager
+            // routes them to the focused control.
+            TextInputEXT.StartTextInput();
 
             // Caller wires up the first scene (typically a boot/world scene)
             // after construction via `Scenes.ChangeScene(...)`.

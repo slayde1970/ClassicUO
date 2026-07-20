@@ -145,7 +145,7 @@ namespace TEF.Scenes
         // Uses the base Scene's shared Ui layer (Tier 4.5). Named + draggable:
         // it drops into the top-right corner on first frame, then the player
         // can drag it anywhere (dragging also raises it to the front).
-        private readonly Panel _resourcePanel = new() { Width = 170, Height = 78, Name = "resources", Draggable = true };
+        private readonly Panel _resourcePanel = new() { Width = 180, Height = 148, Name = "resources", Draggable = true };
         private readonly Label _woodLabel = new() { X = 10, Y = 30 };
         private int _woodCollected;
         private bool _resourcePanelPositioned;
@@ -207,6 +207,18 @@ namespace TEF.Scenes
             ControlProperties.Set(resetButton, "Y", 52);
             resetButton.Clicked += () => _scriptHost.Invoke("resetWood");
             _resourcePanel.Children.Add(resetButton);
+
+            // Tier 4.7 UI demo: a focusable text field + a checkbox, exercising
+            // keyboard focus, text input, and the toggle control. (Placeholder
+            // controls to prove the widgets - a real name/settings UI reuses
+            // them later.)
+            _resourcePanel.Children.Add(new Label { Text = "Name:", X = 10, Y = 86 });
+            _resourcePanel.Children.Add(new TextBox { X = 56, Y = 82, Width = 112, Height = 22, MaxLength = 20 });
+
+            var fpsCheck = new Checkbox { X = 10, Y = 114, Checked = _hud.ShowFps };
+            fpsCheck.Toggled += on => _hud.ShowFps = on;
+            _resourcePanel.Children.Add(fpsCheck);
+            _resourcePanel.Children.Add(new Label { Text = "Show FPS", X = 34, Y = 116 });
 
             Ui.Add(_resourcePanel);
         }
@@ -412,8 +424,14 @@ namespace TEF.Scenes
             // is cheap on frames where nothing is actually due to advance.
             _animatedStatics.Update(Game.Assets);
 
-            bool wasdMoved = _player.Update(input, _map);
-            HandleMouseMovement(input, wasdMoved);
+            // Suppress movement while a UI text field has keyboard focus
+            // (Tier 4.7) so typing 'w'/'a'/'s'/'d' into a TextBox doesn't also
+            // walk the character.
+            if (Ui.Focused == null)
+            {
+                bool wasdMoved = _player.Update(input, _map);
+                HandleMouseMovement(input, wasdMoved);
+            }
 
             if (input.ScrollDelta != 0)
             {

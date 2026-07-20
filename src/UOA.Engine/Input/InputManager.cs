@@ -52,9 +52,33 @@ namespace UOA.Input
         private KeyboardState _keyboard, _prevKeyboard;
         private MouseState _mouse, _prevMouse;
 
+        // Text input (Tier 4.7): SDL/FNA text events are pumped at frame start
+        // (before Update), so the handler appends typed chars to _pendingText
+        // and Update() rolls them into _frameText (this frame's TypedChars),
+        // then clears pending. Text controls read TypedChars; special keys
+        // (backspace/enter/arrows) come from IsKeyPressed instead.
+        private readonly List<char> _pendingText = new();
+        private readonly List<char> _frameText = new();
+
+        public InputManager()
+        {
+            TextInputEXT.TextInput += OnTextInput;
+        }
+
         public Point MousePosition => new(_mouse.X, _mouse.Y);
         public Point MouseDelta => new(_mouse.X - _prevMouse.X, _mouse.Y - _prevMouse.Y);
         public int ScrollDelta => _mouse.ScrollWheelValue - _prevMouse.ScrollWheelValue;
+
+        /// <summary>Printable characters typed this frame, for the focused text control. Control chars are filtered out (see IsKeyPressed for backspace/enter/arrows).</summary>
+        public IReadOnlyList<char> TypedChars => _frameText;
+
+        private void OnTextInput(char c)
+        {
+            if (!char.IsControl(c))
+            {
+                _pendingText.Add(c);
+            }
+        }
 
         public void Rebind(int action, KeyBinding binding) => _bindings[action] = binding;
 
@@ -65,7 +89,17 @@ namespace UOA.Input
 
             _keyboard = Keyboard.GetState();
             _mouse = Mouse.GetState();
+
+            _frameText.Clear();
+            _frameText.AddRange(_pendingText);
+            _pendingText.Clear();
         }
+
+        /// <summary>Raw key state (bypasses the action-binding table) - for text/gump controls.</summary>
+        public bool IsKeyDown(Keys key) => _keyboard.IsKeyDown(key);
+
+        /// <summary>Raw key edge (down this frame, up last) - for text/gump controls.</summary>
+        public bool IsKeyPressed(Keys key) => _keyboard.IsKeyDown(key) && !_prevKeyboard.IsKeyDown(key);
 
         private static bool IsBindingDown(in KeyBinding binding, in KeyboardState state) =>
             state.IsKeyDown(binding.Key) && (binding.Modifier is not Keys modifier || state.IsKeyDown(modifier));

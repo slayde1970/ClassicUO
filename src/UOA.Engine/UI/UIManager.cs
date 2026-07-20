@@ -3,6 +3,7 @@
 using System.Collections.Generic;
 using ClassicUO.Renderer;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Input;
 using UOA.Input;
 
 namespace UOA.UI
@@ -27,13 +28,47 @@ namespace UOA.UI
     /// </summary>
     public sealed class UIManager
     {
+        // Editing keys forwarded to the focused control each frame (typed
+        // printable chars come separately via InputManager.TypedChars).
+        private static readonly Keys[] EditingKeys =
+        {
+            Keys.Back, Keys.Delete, Keys.Left, Keys.Right, Keys.Home, Keys.End, Keys.Enter, Keys.Tab,
+        };
+
         private readonly List<Control> _roots = new();
         private Control _hovered;
+        private Control _focused;
 
         private Control _dragging;
         private Point _dragLast;
 
         public bool IsMouseOverUI => _hovered != null;
+
+        /// <summary>The control currently holding keyboard focus, or null.</summary>
+        public Control Focused => _focused;
+
+        /// <summary>Gives keyboard focus to a control (fires OnBlur/OnFocus). Pass null to clear focus.</summary>
+        public void SetFocus(Control control)
+        {
+            if (_focused == control)
+            {
+                return;
+            }
+
+            if (_focused != null)
+            {
+                _focused.IsFocused = false;
+                _focused.OnBlur();
+            }
+
+            _focused = control;
+
+            if (_focused != null)
+            {
+                _focused.IsFocused = true;
+                _focused.OnFocus();
+            }
+        }
 
         /// <summary>True while a control is being dragged - callers can suppress world interaction until the drag ends.</summary>
         public bool IsDragging => _dragging != null;
@@ -60,8 +95,32 @@ namespace UOA.UI
                     _hovered = null;
                 }
 
+                // Clear focus if the focused control lived in this gump.
+                if (_focused != null && ContainsInTree(control, _focused))
+                {
+                    SetFocus(null);
+                }
+
                 control.OnClosed();
             }
+        }
+
+        private static bool ContainsInTree(Control root, Control target)
+        {
+            if (root == target)
+            {
+                return true;
+            }
+
+            foreach (var child in root.Children)
+            {
+                if (ContainsInTree(child, target))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>Alias for <see cref="Remove"/> reading naturally as "close this gump".</summary>
@@ -155,31 +214,58 @@ namespace UOA.UI
                 _hovered?.OnMouseEnter();
             }
 
-            if (_hovered == null)
-            {
-                return;
-            }
-
+            // Focus follows a left-click: a focusable control gains focus; any
+            // other left-click clears it - including one that misses the UI
+            // entirely (_hovered == null), so clicking the world defocuses a
+            // text box.
             if (input.IsMousePressed(MouseButton.Left))
             {
-                // Grabbing a draggable control starts a drag and raises it;
-                // otherwise it's a normal click. Because only root gumps are
-                // typically flagged Draggable (buttons/labels aren't), clicking
-                // a button still clicks while grabbing the panel body drags.
-                if (_hovered.Draggable)
+                SetFocus(_hovered != null && _hovered.Focusable ? _hovered : null);
+            }
+
+            if (_hovered != null)
+            {
+                if (input.IsMousePressed(MouseButton.Left))
                 {
-                    _dragging = _hovered;
-                    _dragLast = mouse;
-                    BringToFront(_hovered);
+                    // Grabbing a draggable control starts a drag and raises it;
+                    // otherwise it's a normal click. Because only root gumps are
+                    // typically flagged Draggable (buttons/labels aren't),
+                    // clicking a button still clicks while grabbing the panel
+                    // body drags.
+                    if (_hovered.Draggable)
+                    {
+                        _dragging = _hovered;
+                        _dragLast = mouse;
+                        BringToFront(_hovered);
+                    }
+                    else
+                    {
+                        _hovered.OnClick(MouseButton.Left);
+                    }
                 }
-                else
+                else if (input.IsMousePressed(MouseButton.Right))
                 {
-                    _hovered.OnClick(MouseButton.Left);
+                    _hovered.OnClick(MouseButton.Right);
                 }
             }
-            else if (input.IsMousePressed(MouseButton.Right))
+
+            // Route keyboard to the focused control: this frame's typed
+            // characters, then the editing keys that are pressed.
+            if (_focused != null)
             {
-                _hovered.OnClick(MouseButton.Right);
+                var typed = input.TypedChars;
+                for (int i = 0; i < typed.Count; i++)
+                {
+                    _focused.OnTextInput(typed[i]);
+                }
+
+                foreach (var key in EditingKeys)
+                {
+                    if (input.IsKeyPressed(key))
+                    {
+                        _focused.OnKeyDown(key);
+                    }
+                }
             }
         }
 

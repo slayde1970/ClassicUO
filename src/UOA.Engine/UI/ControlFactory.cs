@@ -47,6 +47,8 @@ namespace UOA.UI
             factory.Register("Panel", () => new Panel());
             factory.Register("Label", () => new Label());
             factory.Register("Button", () => new Button());
+            factory.Register("TextBox", () => new TextBox());
+            factory.Register("Checkbox", () => new Checkbox());
             return factory;
         }
     }
