@@ -61,6 +61,9 @@ namespace TEF.World
         /// <summary>Body/skin hue applied to the whole sprite (0 = the art's own default grey body). Defaults to a skin tone; overrides the animation's default hue when non-zero. Future character customization sets this.</summary>
         public ushort Hue { get; set; } = 0x83EA;
 
+        /// <summary>Draw the ground shadow beneath the player. Default on; the game sets this from config (EngineSettings.ShadowsEnabled) so one "shadows off" switch covers the player and statics alike.</summary>
+        public bool ShadowEnabled { get; set; } = true;
+
         public Vector2 WorldPosition { get; private set; }
         public Direction Facing { get; private set; } = Direction.South;
         public bool IsMoving { get; private set; }
@@ -311,7 +314,10 @@ namespace TEF.World
             // the same depth as the player, so the player sprite draws on top of
             // it while it still overlays the land and is occluded by statics in
             // front (same as ClassicUO's MobileView shadow pass).
-            batcher.DrawShadow(sprite.Texture, position, sprite.UV, mirror, depth);
+            if (ShadowEnabled)
+            {
+                batcher.DrawShadow(sprite.Texture, position, sprite.UV, mirror, depth);
+            }
 
             batcher.Draw(
                 sprite.Texture,

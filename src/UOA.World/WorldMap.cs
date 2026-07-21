@@ -748,9 +748,20 @@ namespace UOA.World
         public static Vector3 ComputeHueVector(GameAssets assets, ushort graphic, ushort hue)
         {
             var staticData = assets.Files.TileData.StaticData;
-            bool partialHue = graphic < staticData.Length && staticData[graphic].IsPartialHue;
+            bool inRange = graphic < staticData.Length;
+            bool partialHue = inRange && staticData[graphic].IsPartialHue;
 
-            return ShaderHueTranslator.GetHueVector(hue, partialHue, 1f);
+            // Translucent-flagged statics (harbor water, some decorations)
+            // render at ~70% opacity so whatever sits behind them - a sunken
+            // harbour's seabed land/statics - shows through, matching
+            // ClassicUO's AlphaHue = 178 for IsTranslucent items (alpha here is
+            // opacity: 1 = opaque). These are also kept off the BlockMesh (see
+            // StaticMeshFilter.IsExcludedFromMesh) so they draw on the
+            // back-to-front per-object path, where alpha blending over the
+            // already-drawn opaque world is correct.
+            float alpha = inRange && staticData[graphic].IsTranslucent ? 178f / 255f : 1f;
+
+            return ShaderHueTranslator.GetHueVector(hue, partialHue, alpha);
         }
 
         /// <summary>

@@ -98,6 +98,13 @@ namespace UOA.World
         /// <summary>What the cutoff hides (default: roofs only, so floors and interior decorations aren't culled). See StaticCutoffMode.</summary>
         public StaticCutoffMode StaticCutoffFilter = StaticCutoffMode.Roofs;
 
+        /// <summary>
+        /// Draw ground shadows for shadow-casting statics/entities (trees,
+        /// foliage, rocks - see StaticMeshFilter.CastsShadow). Default on;
+        /// the game sets this from config (EngineSettings.ShadowsEnabled).
+        /// </summary>
+        public bool StaticShadowsEnabled = true;
+
         /// <param name="entities">Live world entities (resource nodes, etc.) to interleave into the same pass, in the same tuple shape as map statics. May be null to skip entirely.</param>
         /// <param name="player">The player, drawn interleaved into the back-to-front pass on its own tile so statics on tiles in front of it can occlude it. May be null.</param>
         /// <param name="viewRangeInTiles">How many tiles out from the player to draw in each direction.</param>
@@ -448,12 +455,24 @@ namespace UOA.World
 
                 if (!isBakedIntoMesh)
                 {
+                    float depth = DepthKey.Compute(tx, ty, s.DepthZ);
+
+                    // Ground shadow for trees/foliage/rocks (Tier polish),
+                    // drawn first at the sprite's own depth so the sprite
+                    // draws on top of it while it still overlays the land and
+                    // is occluded by statics in front - same SHADOW-mode pass
+                    // as the player and ClassicUO's StaticView shadow gate.
+                    if (StaticShadowsEnabled && StaticMeshFilter.CastsShadow(assets, s.Graphic))
+                    {
+                        batcher.DrawShadow(sprite.Texture, screenPos, sprite.UV, false, depth);
+                    }
+
                     batcher.Draw(
                         sprite.Texture,
                         screenPos,
                         sprite.UV,
                         s.HueVector,
-                        DepthKey.Compute(tx, ty, s.DepthZ)
+                        depth
                     );
                     StaticDrawCalls++;
                 }

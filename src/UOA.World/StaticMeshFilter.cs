@@ -56,6 +56,29 @@ namespace UOA.World
 
         public static bool IsTree(ushort graphic) => TreeGraphics.Contains(graphic);
 
+        /// <summary>
+        /// Whether a static/entity of this graphic casts a ground shadow -
+        /// trees, foliage, and rocks, exactly matching ClassicUO.Client's
+        /// StaticView.Draw shadow gate (`isTree || IsFoliage || IsRock`).
+        /// These are all mesh-excluded (see <see cref="IsExcludedFromMesh"/>),
+        /// so they're always on the per-object draw path where a shadow can be
+        /// drawn before the sprite.
+        /// </summary>
+        public static bool CastsShadow(GameAssets assets, ushort graphic)
+        {
+            if (IsTree(graphic) || IsRock(graphic))
+            {
+                return true;
+            }
+
+            if (graphic >= assets.Files.TileData.StaticData.Length)
+            {
+                return false;
+            }
+
+            return assets.Files.TileData.StaticData[graphic].IsFoliage;
+        }
+
         public static bool IsExcludedFromMesh(GameAssets assets, ushort graphic)
         {
             if (graphic >= assets.Files.TileData.StaticData.Length)
@@ -68,6 +91,7 @@ namespace UOA.World
             return data.IsInternal
                 || data.IsAnimated
                 || data.IsFoliage
+                || data.IsTranslucent // drawn semi-transparent on the back-to-front path (see WorldMap.ComputeHueVector) so blending over the seabed is ordered correctly
                 || IsTree(graphic)
                 || IsRock(graphic);
         }

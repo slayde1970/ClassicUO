@@ -241,6 +241,12 @@ namespace TEF.Scenes
             // toggles it thereafter) - Tier 4.5.
             _roofHideEnabled = true;
 
+            // Ground shadows (player + trees/foliage/rocks) - one config
+            // switch drives both draw paths.
+            bool shadows = Game.Settings.ShadowsEnabled;
+            _player.ShadowEnabled = shadows;
+            _tiles.StaticShadowsEnabled = shadows;
+
             RegisterSaveSections();
 
             // Restore only if we were asked to AND a save actually loaded;

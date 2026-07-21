@@ -575,8 +575,14 @@ TEF-specific - each strengthens the engine for every future prototype.
     ClassicUO's MobileView) - a flattened, skewed, translucent copy of the
     current sprite frame, drawn first at the player's depth so the sprite draws
     on top while the shadow overlays the ground and is occluded by statics in
-    front. User-verified. **Deferred to a later graphics-polish phase:** shadows
-    for trees / rocks / other entities (same `DrawShadow` on their draw path).
+    front. User-verified. **Tree/rock/foliage shadows — DONE (polish phase),
+    user-verified:** `StaticMeshFilter.CastsShadow` (= `IsTree || IsFoliage ||
+    IsRock`, matching ClassicUO's `StaticView` gate) drives a `DrawShadow` on
+    the per-object static/entity path in `TileRenderer.DrawStaticsAt` (these
+    graphics are all mesh-excluded, so already on that path). One config switch
+    `EngineSettings.ShadowsEnabled` (default true) gates BOTH the player shadow
+    (`PlayerEntity.ShadowEnabled`) and static shadows
+    (`TileRenderer.StaticShadowsEnabled`), wired in `WorldScene.Load`.
 
 29. **Robustness: save slots + versioning, logging + crash handling. — DONE.**
       - `SaveManager` now serves multiple **named slots** from one manager (the
@@ -609,6 +615,36 @@ Suggested order: **#25 first** (gates the dynamic-world gameplay), then **#26**
 when building real game UI (**#28** a quick fidelity win any time); **#27** when
 the moment's right. (#25, #26 core, #28, #29 — done; #27 Lua is the last Tier 4.7
 item, plus the deferred #26 ScrollPanel/gump-art and #28 tree/rock shadows.)
+
+## Tier 4.8 — Graphics polish (user-requested batch)
+
+A run of visual-fidelity items requested after Tier 4.7. Independent of each
+other; do in any order.
+
+30. **[DONE, user-verified] Tree/rock/foliage shadows** — see #28 above (shadow
+    now cast by trees/foliage/rocks on the per-object path; one config toggle
+    `EngineSettings.ShadowsEnabled` covers player + statics).
+
+31. **[DONE, user-verified] Transparency for static water tiles.** The harbor's
+    static water (e.g. `0x3CE0`) is `TileFlag.Translucent`-flagged; ClassicUO
+    draws translucent statics at `AlphaHue = 178` (~70% opacity), which is why
+    the sunken seabed shows through. Two changes: (a) `WorldMap.ComputeHueVector`
+    bakes alpha `178f/255f` into the hue vector for `IsTranslucent` statics
+    (opaque stays `1f`); (b) `StaticMeshFilter.IsExcludedFromMesh` now also
+    excludes `IsTranslucent` - the BlockMesh draws statics in texture-bucket
+    order (wrong for alpha blending), so translucent water must ride the
+    back-to-front per-object path where it blends over the already-drawn opaque
+    seabed. Depth test intact (front masts/walls still occlude). One knob to
+    tune strength: the `178f/255f` alpha.
+
+32. **Colored day/night tint.** Extend `World/DayNightOverlay.cs` (today a
+    brightness-only multiply) to a *colored* curve: warm sunrise, warm sunset,
+    and a cool blue moonlight tint at night, replacing the flat grey
+    `MinBrightness` floor. This is Tier 6 #15 pulled forward. Later follow-ons
+    (not now): weather - rain, and drifting cloud-shadow patterns across the
+    ground during daytime.
+
+33. _(reserved - user will add more polish items here as they think of them.)_
 
 ## Tier 5 — reserved
 

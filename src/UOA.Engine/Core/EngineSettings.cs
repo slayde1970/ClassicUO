@@ -14,5 +14,8 @@ namespace UOA.Core
         public string Language { get; set; } = "ENU";
         public bool UseVerdata { get; set; }
         public int FPS { get; set; } = 60;
+
+        /// <summary>Draw ground shadows for the player and shadow-casting statics (trees, foliage, rocks). On by default; set false in config.json to disable.</summary>
+        public bool ShadowsEnabled { get; set; } = true;
     }
 }
