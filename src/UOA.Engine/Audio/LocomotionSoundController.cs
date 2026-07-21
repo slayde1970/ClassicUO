@@ -53,6 +53,13 @@ namespace UOA.Audio
         /// <summary>Master on/off (the game wires this to a config toggle).</summary>
         public bool Enabled { get; set; } = true;
 
+        /// <summary>
+        /// Volume multiplier (0..1) layered on top of the global sound volume,
+        /// so movement sounds can sit quieter in the mix without dragging every
+        /// other effect down with them. 1 = same as any other sound.
+        /// </summary>
+        public float Volume { get; set; } = 1f;
+
         public LocomotionSoundController(AudioManager audio)
         {
             _audio = audio;
@@ -91,7 +98,7 @@ namespace UOA.Audio
                 return;
             }
 
-            _audio.PlaySound(profile.StepSounds[_stepIndex]);
+            _audio.PlaySound(profile.StepSounds[_stepIndex], Volume);
             _stepIndex = (_stepIndex + 1) % profile.StepSounds.Length;
             _cooldown = running ? profile.RunInterval : profile.WalkInterval;
         }

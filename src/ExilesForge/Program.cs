@@ -48,12 +48,17 @@ namespace TEF
                         ClientVersion = DefaultClientVersion,
                     },
                 };
-
-                // First run (or a repaired legacy config) - write out a
-                // discoverable, editable file rather than silently falling
-                // back to these defaults every launch.
-                configManager.Save(config);
             }
+
+            // Always write the config back (first run, a repaired legacy file,
+            // or an up-to-date one) BEFORE the command-line overrides below are
+            // applied, so the saved file stays a complete, discoverable,
+            // editable record of every setting. Settings added in a later build
+            // are absent from an older file and deserialize to their property
+            // defaults; round-tripping here materialises them into the JSON so
+            // they can actually be found and tweaked, instead of staying
+            // invisible until the file happens to be recreated.
+            configManager.Save(config);
 
             var settings = config.Engine;
 

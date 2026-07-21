@@ -20,5 +20,8 @@ namespace UOA.Core
 
         /// <summary>Play movement sounds (footsteps; hoofbeats when mounted later). On by default; set false in config.json to disable.</summary>
         public bool FootstepsEnabled { get; set; } = true;
+
+        /// <summary>Movement-sound loudness as a percentage (0-100) of the global sound volume, so footsteps can sit quieter in the mix without lowering every other effect. 100 = unscaled (the default).</summary>
+        public int FootstepVolume { get; set; } = 30;
     }
 }

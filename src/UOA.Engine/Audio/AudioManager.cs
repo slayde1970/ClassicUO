@@ -44,14 +44,25 @@ namespace UOA.Audio
             }
         }
 
-        public void PlaySound(int index)
+        /// <param name="index">Sound id to play.</param>
+        /// <param name="volumeScale">Per-sound multiplier (0..1) layered on top of the global <see cref="SoundVolume"/>, so an individual effect (footsteps, say) can sit quieter in the mix without changing the master level. 1 = unscaled.</param>
+        public void PlaySound(int index, float volumeScale = 1f)
         {
             if (!_canPlayAudio || !EnableSound)
             {
                 return;
             }
 
-            float volume = ResolveVolume(SoundVolume);
+            if (volumeScale < 0f)
+            {
+                volumeScale = 0f;
+            }
+            else if (volumeScale > 1f)
+            {
+                volumeScale = 1f;
+            }
+
+            float volume = ResolveVolume(SoundVolume) * volumeScale;
             if (volume <= 0f)
             {
                 return;

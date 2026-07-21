@@ -652,7 +652,34 @@ other; do in any order.
     Later follow-ons (not now): weather - rain, and drifting cloud-shadow
     patterns across the ground during daytime.
 
-33. _(reserved - user will add more polish items here as they think of them.)_
+33. **[DONE, user-verified] Footstep sounds (mount-ready).** New engine class
+    `UOA.Audio/LocomotionSoundController.cs`, modeled on ClassicUO's
+    `Mobile.ProcessFootstepsSound`: a set of step sounds is alternated for a
+    left/right footfall cadence, spaced by a walk/run interval, gated by an
+    absolute cooldown (so brief stop/start taps can't machine-gun the sound).
+    **The mount seam:** locomotion is an opaque `int` mode key with one
+    registered `Profile` (sound set + walk/run intervals) per mode, so adding
+    mounts later is just registering a profile and passing a different mode -
+    no change to the controller or the per-frame call site. The game registers
+    both on-foot (`0x012B`/`0x012C` footfalls) and mounted (`0x0129`/`0x012A`
+    gallop, unused until a mount system exists); `TEF.World.LocomotionMode`
+    enum + `WorldScene._currentLocomotion` select the active one. Driven from
+    `_player.IsMoving`/`IsRunning`. The controller hardcodes nothing
+    UO-specific - sound ids stay in the game.
+    - Config: `EngineSettings.FootstepsEnabled` (bool) and `FootstepVolume`
+      (0-100 % of the global sound volume, so footsteps can sit quieter in the
+      mix without lowering every other effect). Implemented via a new optional
+      `AudioManager.PlaySound(index, volumeScale = 1f)` param (clamped 0..1,
+      layered on top of `SoundVolume`) - existing callers unchanged.
+    - Tuned with the user: on-foot walk 0.52s, run 0.45s; footstep volume 30.
+    - **`Program.RunGame` now always re-saves config.json on startup** (before
+      CLI overrides are applied, so those still aren't persisted). Settings
+      added in a later build are absent from an older file and deserialize to
+      their property defaults; round-tripping materialises them into the JSON
+      so they're discoverable/editable instead of invisible until the file
+      happens to be recreated.
+    - A startup `Log.Info` reports the effective footstep settings, so
+      "is my setting even applying?" is one grep of app.log away.
 
 ## Tier 5 — reserved
 

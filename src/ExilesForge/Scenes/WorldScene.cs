@@ -262,9 +262,16 @@ namespace TEF.Scenes
             // ClassicUO's Mobile.ProcessFootstepsSound (foot 400ms*13/10, mount
             // 350/150ms*13/10); on-foot run shortened so footsteps quicken when
             // sprinting (TEF has a run gait the base client doesn't).
-            _footsteps = new LocomotionSoundController(Game.Audio) { Enabled = Game.Settings.FootstepsEnabled };
+            _footsteps = new LocomotionSoundController(Game.Audio)
+            {
+                Enabled = Game.Settings.FootstepsEnabled,
+                Volume = Game.Settings.FootstepVolume / 100f,
+            };
             _footsteps.Register((int)LocomotionMode.OnFoot,
-                new LocomotionSoundController.Profile(new ushort[] { 0x012B, 0x012C }, walkInterval: 0.52f, runInterval: 0.40f));
+                new LocomotionSoundController.Profile(new ushort[] { 0x012B, 0x012C }, walkInterval: 0.52f, runInterval: 0.45f));
+            ClassicUO.Utility.Logging.Log.Info(
+                $"Footsteps: enabled={_footsteps.Enabled} volume={_footsteps.Volume:0.00} (config FootstepVolume={Game.Settings.FootstepVolume}, global SoundVolume={Game.Audio.SoundVolume})");
+
             _footsteps.Register((int)LocomotionMode.Mounted,
                 new LocomotionSoundController.Profile(new ushort[] { 0x0129, 0x012A }, walkInterval: 0.45f, runInterval: 0.20f));
 
