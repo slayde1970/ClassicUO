@@ -247,6 +247,10 @@ namespace TEF.Scenes
             _player.ShadowEnabled = shadows;
             _tiles.StaticShadowsEnabled = shadows;
 
+            // Day/night color curve (Tier 4.8 #32): loaded from a designer-
+            // editable daynight.json, seeded on first run so it's discoverable.
+            LoadDayNightProfile();
+
             RegisterSaveSections();
 
             // Restore only if we were asked to AND a save actually loaded;
@@ -257,6 +261,24 @@ namespace TEF.Scenes
                 _player.Spawn(_map, _spawnTile);
                 SpawnDebugTrees();
             }
+        }
+
+        // Loads the day/night color curve from a designer-editable
+        // daynight.json (%AppData%/ExilesForge). Seeds the file with the
+        // defaults on first run (or when it's missing/empty/unparseable) so it's
+        // discoverable and self-heals, mirroring how config.json is handled.
+        private void LoadDayNightProfile()
+        {
+            var manager = new ConfigManager<DayNightProfile>(TefApp.AppId, "daynight.json");
+            var profile = manager.Load();
+
+            if (profile == null || profile.Stops == null || profile.Stops.Count == 0)
+            {
+                profile = DayNightProfile.CreateDefault();
+                manager.Save(profile);
+            }
+
+            _dayNight.Gradient = profile.ToGradient();
         }
 
         // Registers each system's save section with the engine SaveManager

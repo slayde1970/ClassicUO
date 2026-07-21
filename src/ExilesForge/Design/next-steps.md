@@ -637,12 +637,20 @@ other; do in any order.
     seabed. Depth test intact (front masts/walls still occlude). One knob to
     tune strength: the `178f/255f` alpha.
 
-32. **Colored day/night tint.** Extend `World/DayNightOverlay.cs` (today a
-    brightness-only multiply) to a *colored* curve: warm sunrise, warm sunset,
-    and a cool blue moonlight tint at night, replacing the flat grey
-    `MinBrightness` floor. This is Tier 6 #15 pulled forward. Later follow-ons
-    (not now): weather - rain, and drifting cloud-shadow patterns across the
-    ground during daytime.
+32. **[DONE, user-verified] Colored day/night tint.** `World/DayNightOverlay.cs`
+    now clears its multiply target to a *colored* tint sampled from a new
+    `World/DayNightGradient.cs` (time-keyed `(0..1, Color)` stops, linear-
+    interpolated) instead of a grey brightness scalar - warm sunrise/sunset,
+    cool blue moonlight, neutral white midday. **Data-driven:** the curve loads
+    from a designer-editable `daynight.json` (`%AppData%/ExilesForge`) via
+    `TEF.Persistence.DayNightProfile` (`Hour` 0..24 + `#RRGGBB` hex per stop),
+    loaded with `ConfigManager<DayNightProfile>(AppId, "daynight.json")`, seeded
+    on first run + self-healing (mirrors config.json), converted to the engine
+    gradient in `WorldScene.LoadDayNightProfile`. The displayed tint also **eases
+    toward the sampled target** each frame (frame-rate-independent exponential,
+    `TransitionRate` knob) so an F10 time jump cross-fades instead of popping.
+    Later follow-ons (not now): weather - rain, and drifting cloud-shadow
+    patterns across the ground during daytime.
 
 33. _(reserved - user will add more polish items here as they think of them.)_
 

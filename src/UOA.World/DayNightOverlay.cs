@@ -21,10 +21,23 @@ namespace UOA.World
     /// </summary>
     public sealed class DayNightOverlay
     {
-        // Darkest-midnight ambient brightness floor - 0 would be pitch
-        // black; a floor keeps night navigable without any light sources,
-        // similar to how UO's own nights are dim but never fully black.
-        private const float MinBrightness = 0.30f;
+        /// <summary>
+        /// The colored ambient-tint curve sampled each frame (Tier 4.8 #32):
+        /// warm sunrise/sunset, cool blue moonlight, neutral white midday. The
+        /// game assigns one built from daynight.json; the built-in default is
+        /// used until then. Its darkest (night) stops are the ambient floor -
+        /// never pitch black, so night stays navigable without light sources.
+        /// </summary>
+        public DayNightGradient Gradient { get; set; } = DayNightGradient.Default;
+
+        // The displayed tint eases toward the freshly-sampled target each frame
+        // rather than snapping, so a sudden time change (the F10 debug jump, or
+        // any large clock step) cross-fades smoothly instead of popping;
+        // continuous play was already smooth via the gradient's own lerp. Higher
+        // rate = snappier, lower = a longer, gentler cross-fade (~1s at 3).
+        private const float TransitionRate = 3f;
+        private Vector3 _currentTint;
+        private bool _tintInitialized;
 
         // Multiply blend (destination-color * source-color) - XNA/FNA has
         // no built-in BlendState.Multiply, so it's constructed explicitly.
@@ -58,10 +71,24 @@ namespace UOA.World
 
             EnsureTarget(device, viewportWidth, viewportHeight);
 
-            float brightness = ComputeBrightness(clock.TimeOfDay);
+            Vector3 target = Gradient.Sample(clock.TimeOfDay).ToVector3();
+
+            if (!_tintInitialized)
+            {
+                // First frame: adopt the target directly so we don't fade in
+                // from black on load.
+                _currentTint = target;
+                _tintInitialized = true;
+            }
+            else
+            {
+                // Frame-rate-independent exponential ease toward the target.
+                float t = 1f - MathF.Exp(-TransitionRate * Time.Delta);
+                _currentTint = Vector3.Lerp(_currentTint, target, t);
+            }
 
             device.SetRenderTarget(_target);
-            device.Clear(new Color(brightness, brightness, brightness, 1f));
+            device.Clear(new Color(_currentTint));
             device.SetRenderTarget(null);
         }
 
@@ -84,15 +111,6 @@ namespace UOA.World
             batcher.Draw(_target, viewport, ShaderHueTranslator.GetHueVector(0), 0f);
             batcher.SetBlendState(null);
             batcher.End();
-        }
-
-        /// <summary>1 (full daylight) at noon, MinBrightness at midnight, smooth in between.</summary>
-        private static float ComputeBrightness(float timeOfDay)
-        {
-            float wave = MathF.Cos((timeOfDay - 0.5f) * MathF.PI * 2f);
-            float normalized = wave * 0.5f + 0.5f;
-
-            return MinBrightness + (1f - MinBrightness) * normalized;
         }
 
         private void EnsureTarget(GraphicsDevice device, int width, int height)
