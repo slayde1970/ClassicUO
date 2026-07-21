@@ -6,6 +6,7 @@ using System.Text.Json;
 using ClassicUO.Renderer;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using UOA.Audio;
 using UOA.Core;
 using UOA.Input;
 using UOA.Persistence;
@@ -113,6 +114,8 @@ namespace TEF.Scenes
         private readonly EntityRenderSystem _entityRenderer;
         private readonly AnimatedStatics _animatedStatics = new();
         private readonly DayNightOverlay _dayNight = new();
+        private LocomotionSoundController _footsteps;
+        private LocomotionMode _currentLocomotion = LocomotionMode.OnFoot;
         private WorldMap _map;
         private bool _drawStatics = true;
         private bool _drawMapStatics = true; // F7 - independent of F6, entities always draw regardless of either
@@ -250,6 +253,20 @@ namespace TEF.Scenes
             // Day/night color curve (Tier 4.8 #32): loaded from a designer-
             // editable daynight.json, seeded on first run so it's discoverable.
             LoadDayNightProfile();
+
+            // Movement sounds (Tier 4.8 #33). On-foot footsteps use the classic
+            // UO footfall pair (0x012B/0x012C) alternated for a left/right
+            // cadence; the mounted gallop pair (0x0129/0x012A) is registered now
+            // - unused until a mount system exists - so switching locomotion is
+            // just changing _currentLocomotion. Intervals ported from
+            // ClassicUO's Mobile.ProcessFootstepsSound (foot 400ms*13/10, mount
+            // 350/150ms*13/10); on-foot run shortened so footsteps quicken when
+            // sprinting (TEF has a run gait the base client doesn't).
+            _footsteps = new LocomotionSoundController(Game.Audio) { Enabled = Game.Settings.FootstepsEnabled };
+            _footsteps.Register((int)LocomotionMode.OnFoot,
+                new LocomotionSoundController.Profile(new ushort[] { 0x012B, 0x012C }, walkInterval: 0.52f, runInterval: 0.40f));
+            _footsteps.Register((int)LocomotionMode.Mounted,
+                new LocomotionSoundController.Profile(new ushort[] { 0x0129, 0x012A }, walkInterval: 0.45f, runInterval: 0.20f));
 
             RegisterSaveSections();
 
@@ -460,6 +477,12 @@ namespace TEF.Scenes
                 bool wasdMoved = _player.Update(input, _map);
                 HandleMouseMovement(input, wasdMoved);
             }
+
+            // Movement sounds, keyed on the player's resolved gait/mode (the
+            // player isn't moving while UI-focused, so this naturally goes
+            // silent then). _currentLocomotion stays OnFoot until a mount
+            // system flips it - the Mounted profile is already registered.
+            _footsteps.Update(Time.Delta, _player.IsMoving, _player.IsRunning, (int)_currentLocomotion);
 
             if (input.ScrollDelta != 0)
             {
